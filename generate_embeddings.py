@@ -1,6 +1,7 @@
 # pyrefly: ignore [missing-import]
 import os
 import json
+# pyrefly: ignore [untyped-import]
 import psycopg2
 from dotenv import load_dotenv
 from google import genai
@@ -36,6 +37,7 @@ def get_gemini_vector(text_to_embed):
         model="gemini-embedding-2",
         contents=text_to_embed
     )
+    # pyrefly: ignore [unsupported-operation]
     return response.embeddings[0].values
 
 def process_and_vectorize_catalog():
