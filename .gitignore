@@ -1,0 +1,14 @@
+# Ignore local environment variable files containing secrets
+.env
+db_key.txt
+
+# Ignore the virtual environment folder
+venv/
+.venv/
+
+# Ignore Python cache files (automatically generated temporary code)
+__pycache__/
+*.pyc
+
+# Ignore local configuration files
+pyrefly.toml

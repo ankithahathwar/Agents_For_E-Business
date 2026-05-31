@@ -1,0 +1,449 @@
+[
+    {
+        "base_product_id": "prod_custom_suit_01",
+        "name": "The Sartorial Bespoke Suit",
+        "category": "Menswear / Unisex Formal",
+        "description": "A completely customized premium suit. Controls core silhouette alongside hyper-detailed accent haberdashery.",
+        "customization_matrix": {
+            "fabrics": [
+                {
+                    "fabric_id": "fab_merino_130",
+                    "name": "Super 130s Australian Merino Wool",
+                    "texture": "Ultra-smooth, low-sheen twill with an exceptionally fluid drape.",
+                    "weight": "260g/m",
+                    "colors": [
+                        "Midnight Blue",
+                        "Charcoal Grey",
+                        "Deep Black"
+                    ],
+                    "price_modifier": 0.0
+                }
+            ],
+            "core_styling": {
+                "silhouette_fit": [
+                    {
+                        "id": "fit_slim",
+                        "name": "Milano Slim Fit"
+                    },
+                    {
+                        "id": "fit_classic",
+                        "name": "Savile Row Classic Fit"
+                    }
+                ],
+                "jacket_lapel": [
+                    {
+                        "id": "lapel_notch",
+                        "name": "Standard Notch Lapel"
+                    },
+                    {
+                        "id": "lapel_peak",
+                        "name": "Sartorial Peak Lapel"
+                    }
+                ]
+            },
+            "micro_customizations": {
+                "buttons": {
+                    "button_material": [
+                        {
+                            "id": "btn_mat_horn",
+                            "name": "Genuine Ox Horn",
+                            "description": "Natural mottled texture, highly durable luxury classic.",
+                            "price_modifier": 25.0
+                        },
+                        {
+                            "id": "btn_mat_corozo",
+                            "name": "Ecuadorian Corozo Nut",
+                            "description": "Eco-friendly, beautifully grained matte finish.",
+                            "price_modifier": 15.0
+                        },
+                        {
+                            "id": "btn_mat_resin",
+                            "name": "Polished Faux-Resin",
+                            "description": "Standard high-gloss lightweight resin.",
+                            "price_modifier": 0.0
+                        }
+                    ],
+                    "button_thread_color": [
+                        {
+                            "id": "thrd_match",
+                            "name": "Tonal Match",
+                            "description": "Matches jacket fabric exactly."
+                        },
+                        {
+                            "id": "thrd_contrast_red",
+                            "name": "Crimson Red Accent",
+                            "description": "Subtle pop of color on button attachment stitching."
+                        },
+                        {
+                            "id": "thrd_gold",
+                            "name": "Sartorial Gold Thread"
+                        }
+                    ],
+                    "sleeve_button_count": [
+                        {
+                            "id": "slv_4_kissing",
+                            "name": "4 Buttons (Kissing/Overlapping)",
+                            "description": "Classic Italian styling touch where buttons slightly overlap."
+                        },
+                        {
+                            "id": "slv_3_spaced",
+                            "name": "3 Buttons (Spaced)",
+                            "description": "Traditional minimalist cuff arrangement."
+                        }
+                    ]
+                },
+                "stitching_and_accents": {
+                    "lapel_buttonhole_stitching": [
+                        {
+                            "id": "hole_match",
+                            "name": "Standard Tonal Stitching"
+                        },
+                        {
+                            "id": "hole_milanese_burgundy",
+                            "name": "Hand-Wound Milanese Loop (Burgundy)",
+                            "description": "A raised, premium silk-gimp buttonhole statement.",
+                            "price_modifier": 20.0
+                        }
+                    ],
+                    "pick_stitching": [
+                        {
+                            "id": "pick_none",
+                            "name": "Clean Machine Edge"
+                        },
+                        {
+                            "id": "pick_hand",
+                            "name": "5mm Hand-Crafted Pick Stitching",
+                            "description": "Visible perimeter stitch paths indicating true hand-tailored build.",
+                            "price_modifier": 45.0
+                        }
+                    ]
+                }
+            },
+            "incompatible_combinations": []
+        }
+    },
+    {
+        "base_product_id": "prod_custom_saree_02",
+        "name": "The Royal Heritage Saree & Bespoke Blouse Architect",
+        "category": "Indian Ethnic Luxury Wear",
+        "description": "Total configuration mapping out regional drapes alongside structural component-level blouse tailoring details.",
+        "customization_matrix": {
+            "fabrics": [
+                {
+                    "fabric_id": "fab_kanjeevaram",
+                    "name": "Pure Mulberry Kanjeevaram Silk",
+                    "texture": "Thick, heavy weave with deep stiffness for architectural pleats.",
+                    "weight": "480g",
+                    "colors": [
+                        "Kinnari Crimson Red",
+                        "Vaikuntha Gold"
+                    ],
+                    "price_modifier": 250.0
+                }
+            ],
+            "core_styling": {
+                "blouse_neckline": [
+                    {
+                        "id": "neck_sweetheart",
+                        "name": "Deep Sweetheart Cut"
+                    },
+                    {
+                        "id": "neck_high_collar",
+                        "name": "Regal Closed High Neck"
+                    }
+                ]
+            },
+            "micro_customizations": {
+                "blouse_hardware": {
+                    "fastener_type": [
+                        {
+                            "id": "fast_steel_hooks",
+                            "name": "Traditional Concealed Steel Hooks",
+                            "description": "Classic multi-hook front interior track."
+                        },
+                        {
+                            "id": "fast_back_zip",
+                            "name": "YKK Inverted Seamless Back Zipper",
+                            "description": "Flawless flat closure line across the spine."
+                        },
+                        {
+                            "id": "fast_potli_loops",
+                            "name": "Fabric-Covered Potli Buttons & Loops",
+                            "description": "Heirloom style cloth spherical fasteners.",
+                            "price_modifier": 15.0
+                        }
+                    ],
+                    "back_dori_tassels": [
+                        {
+                            "id": "dori_none",
+                            "name": "No Back Ties"
+                        },
+                        {
+                            "id": "dori_latkan_heavy",
+                            "name": "Hand-Beaded Zardozi Latkan Tassels",
+                            "description": "Intricate structural metallic hangings.",
+                            "price_modifier": 35.0
+                        }
+                    ]
+                },
+                "saree_drapery_accents": {
+                    "pleat_configuration": [
+                        {
+                            "id": "pleat_standard_5",
+                            "name": "5 Classic Deep Center Pleats",
+                            "description": "Maximum volume flair profile."
+                        },
+                        {
+                            "id": "pleat_sleek_7",
+                            "name": "7 Compact Streamlined Pleats",
+                            "description": "Ultra-flat waistline profile alignment."
+                        }
+                    ],
+                    "pallu_edge_finish": [
+                        {
+                            "id": "edge_fringe",
+                            "name": "Hand-Knotted Silk Thread Fringes"
+                        },
+                        {
+                            "id": "edge_piping",
+                            "name": "Sleek Zari Piping Hem"
+                        }
+                    ]
+                }
+            },
+            "incompatible_combinations": []
+        }
+    },
+    {
+        "base_product_id": "prod_custom_gown_03",
+        "name": "The Atelier Custom Wedding Gown",
+        "category": "Bridal High Couture",
+        "description": "Exhaustive bridal configurator modeling continuous architectural silhouettes down to fastening accents.",
+        "customization_matrix": {
+            "fabrics": [
+                {
+                    "fabric_id": "fab_mika_satin",
+                    "name": "Heavy Italian Mikado Silk Satin",
+                    "texture": "Thick satin with structured grain and clean architectural lines.",
+                    "weight": "420g/m",
+                    "colors": [
+                        "Pristine Off-White"
+                    ],
+                    "price_modifier": 210.0
+                }
+            ],
+            "core_styling": {
+                "gown_silhouette": [
+                    {
+                        "id": "sil_ballgown",
+                        "name": "Regal Royal Ballgown"
+                    },
+                    {
+                        "id": "sil_mermaid",
+                        "name": "Couture Mermaid Fit"
+                    }
+                ]
+            },
+            "micro_customizations": {
+                "closures_and_hardware": {
+                    "back_closure_mechanism": [
+                        {
+                            "id": "close_buttons_silk",
+                            "name": "40 Hand-Covered Silk Loop Buttons",
+                            "description": "Continuous delicate scaling up the spine.",
+                            "price_modifier": 50.0
+                        },
+                        {
+                            "id": "close_laceup_corset",
+                            "name": "Satin Ribbon Lace-Up Corset Tie",
+                            "description": "Allows manual sizing adjustments and extreme waist cinch."
+                        },
+                        {
+                            "id": "close_hidden_zip",
+                            "name": "Internal Boned Bodice with Invisible Zipper"
+                        }
+                    ],
+                    "crinoline_layers": [
+                        {
+                            "id": "crin_standard",
+                            "name": "3-Layer Medium Tulle Volume Base"
+                        },
+                        {
+                            "id": "crin_max",
+                            "name": "6-Layer Extra-Stiff Structured Petticoat Mega-Volume",
+                            "price_modifier": 60.0
+                        }
+                    ]
+                }
+            },
+            "incompatible_combinations": []
+        }
+    },
+    {
+        "base_product_id": "prod_tuxedo_black_tie",
+        "name": "The Grand Gala Tuxedo",
+        "category": "Formal Eveningwear",
+        "description": "High-precision dinner jacket and trousers with traditional silk satin facing choices.",
+        "customization_matrix": {
+            "fabrics": [
+                {
+                    "fabric_id": "fab_barathea_wool",
+                    "name": "British Barathea Midnight Wool",
+                    "texture": "Subtely pebbled weave absorbing light completely.",
+                    "weight": "310g/m",
+                    "colors": [
+                        "Midnight Blue"
+                    ],
+                    "price_modifier": 0.0
+                }
+            ],
+            "core_styling": {
+                "jacket_lapel": [
+                    {
+                        "id": "lapel_shawl",
+                        "name": "Satin Shawl Collar"
+                    },
+                    {
+                        "id": "lapel_peak",
+                        "name": "Satin Peak Lapel"
+                    }
+                ]
+            },
+            "micro_customizations": {
+                "tuxedo_accents": {
+                    "lapel_facing_fabric": [
+                        {
+                            "id": "face_satin",
+                            "name": "Mirror-Finish Silk Satin"
+                        },
+                        {
+                            "id": "face_grosgrain",
+                            "name": "Ribbed Matte Grosgrain Silk"
+                        }
+                    ],
+                    "trouser_side_stripe": [
+                        {
+                            "id": "stripe_single",
+                            "name": "Single Ribbon Satin Side Stripe",
+                            "description": "Traditional tuxedo stripe covering outer leg seams."
+                        },
+                        {
+                            "id": "stripe_none",
+                            "name": "Clean Seamless Trouser Outseam"
+                        }
+                    ]
+                }
+            },
+            "incompatible_combinations": []
+        }
+    },
+    {
+        "base_product_id": "prod_riviera_summer",
+        "name": "The Riviera Unstructured Suit",
+        "category": "Casual & Destination Tailoring",
+        "description": "An entirely unpadded, lightweight summer suit built for relaxed elegance.",
+        "customization_matrix": {
+            "fabrics": [
+                {
+                    "fabric_id": "fab_irish_linen",
+                    "name": "Pure Irish Flamed Linen",
+                    "texture": "Crisp, airy slubbed texture.",
+                    "weight": "200g/m",
+                    "colors": [
+                        "Natural Oatmeal",
+                        "Sage Green"
+                    ],
+                    "price_modifier": 0.0
+                }
+            ],
+            "core_styling": {
+                "jacket_lapel": [
+                    {
+                        "id": "lapel_notch",
+                        "name": "Relaxed Notch Lapel"
+                    }
+                ]
+            },
+            "micro_customizations": {
+                "unstructured_accents": {
+                    "pocket_style": [
+                        {
+                            "id": "pocket_patch",
+                            "name": "External Curved Patch Pockets"
+                        },
+                        {
+                            "id": "pocket_flap",
+                            "name": "Traditional Inset Flap Pockets"
+                        }
+                    ],
+                    "jacket_lining_cut": [
+                        {
+                            "id": "line_unlined",
+                            "name": "Completely Unlined Back (Maximum Cool)"
+                        },
+                        {
+                            "id": "line_half_buggy",
+                            "name": "Half-Buggy Shoulder Lining Only",
+                            "description": "Protects upper back friction wear lines."
+                        }
+                    ]
+                }
+            },
+            "incompatible_combinations": []
+        }
+    },
+    {
+        "base_product_id": "prod_power_suit_db",
+        "name": "The Wall Street Power Suit",
+        "category": "Business Executive",
+        "description": "Heavy-canvas, deeply structured suit designed to command presence.",
+        "customization_matrix": {
+            "fabrics": [
+                {
+                    "fabric_id": "fab_pinstripe_wool",
+                    "name": "Super 150s Flannel Pinstripe",
+                    "texture": "Chalk vertical stripes spaced exactly 1cm apart.",
+                    "weight": "340g/m",
+                    "colors": [
+                        "Chalk Stripe Charcoal"
+                    ],
+                    "price_modifier": 45.0
+                }
+            ],
+            "core_styling": {
+                "jacket_lapel": [
+                    {
+                        "id": "lapel_wide_peak",
+                        "name": "Extravagant 4.5-inch Peak Lapel"
+                    }
+                ]
+            },
+            "micro_customizations": {
+                "power_accents": {
+                    "shoulder_padding_style": [
+                        {
+                            "id": "shld_rope",
+                            "name": "Con Rollini (Roped Shoulder Expression)"
+                        },
+                        {
+                            "id": "shld_british",
+                            "name": "Standard Square British Padded Pad"
+                        }
+                    ],
+                    "waistcoat_addition": [
+                        {
+                            "id": "vest_none",
+                            "name": "Standard 2-Piece Suit Setup"
+                        },
+                        {
+                            "id": "vest_double_6x3",
+                            "name": "Matching Double-Breasted 6-Button Vest Addition",
+                            "price_modifier": 120.0
+                        }
+                    ]
+                }
+            },
+            "incompatible_combinations": []
+        }
+    }
+]
