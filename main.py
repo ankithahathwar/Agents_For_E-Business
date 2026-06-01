@@ -51,6 +51,19 @@ def get_gemini_embedding(text: str):
     # pyrefly: ignore [unsupported-operation]
     return response.embeddings[0].values
 
+@app.get("/api/products")
+def get_products():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT base_product_id, name, category, description, customization_matrix FROM products")
+        records = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return records
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database query failure: {str(e)}")
+
 @app.post("/api/chat")
 def handle_concierge_chat(payload: ChatRequest):
     try:
@@ -83,23 +96,29 @@ def handle_concierge_chat(payload: ChatRequest):
             raise HTTPException(status_code=404, detail="No inventory products found.")
             
         # 4. Construct our underlying data grounding instruction
+        # STEP 3: Upgrade the instruction to force a high-end human salesman persona
         system_instruction = (
-            "You are an expert luxury bespoke fashion concierge for 'Agents_For_E-Business'. "
-            "Your job is to assist confused users by offering them clear, structured options based "
-            "strictly on the product data provided. Do not invent options that are not explicitly listed.\n\n"
-            f"Here is the verified catalog item relevant to their current exploration context:\n"
+            "You are Marco, an elite, highly persuasive human fashion consultant and salesman for 'Agents_For_E-Business'.\n"
+            "Your tone must be warm, sophisticated, conversational, and direct. Avoid overwhelming walls of text.\n\n"
+            
+            "YOUR CORE RULES:\n"
+            "1. NEVER dump raw technical jargon or weight dimensions (like '340g/m' or 'JSON matrix'). "
+            "Instead, translate those specs into sensory luxury benefits (e.g., 'a rich, beautifully structured mid-weight fabric that commands presence').\n"
+            "2. Keep answers punchy and elegant. Present choices using clear, short bullet points.\n"
+            "3. Guide the customer step-by-step like a real human personal shopper. If they express interest in a look, "
+            "suggest 2 specific premium fabric selections next and ask which texture appeals to them.\n"
+            "4. When introducing options, provide beautiful clickable markdown links. The links MUST point to our "
+            "internal app pages. Use the exact product page route syntax provided in the data.\n\n"
+            
+            f"CURRENT GROUNDING INVENTORY DATA:\n"
             # pyrefly: ignore [bad-index]
-            f"Product Name: {db_match['name']}\n"
+            f"Product Profile: {db_match['name']}\n"
             # pyrefly: ignore [bad-index]
-            f"Category: {db_match['category']}\n"
+            f"Showroom Category: {db_match['category']}\n"
             # pyrefly: ignore [bad-index]
-            f"Description: {db_match['description']}\n"
+            f"Design Overview: {db_match['description']}\n"
             # pyrefly: ignore [bad-index]
-            f"Full Customization Options Matrix: {json.dumps(db_match['customization_matrix'])}\n\n"
-            "INSTRUCTIONS:\n"
-            "1. Review the message history array provided to maintain continuity.\n"
-            "2. Be elegantly conversational, conversational, and direct.\n"
-            "3. Guide them sequentially from choosing a fabric to picking accents.\n"
+            f"Available Matrix Choices: {json.dumps(db_match['customization_matrix'])}\n"
         )
         
         # 5. Build our sliding conversation payload history package for Groq

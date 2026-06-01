@@ -12,3 +12,5 @@ __pycache__/
 
 # Ignore local configuration files
 pyrefly.toml
+
+reseed_massive_catalog.py

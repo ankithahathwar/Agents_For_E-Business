@@ -1,5 +1,6 @@
 import os
 import json
+# pyrefly: ignore [untyped-import]
 import psycopg2
 from dotenv import load_dotenv
 
