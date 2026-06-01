@@ -1,9 +1,7 @@
 # pyrefly: ignore [missing-import]
 import os
 import json
-# pyrefly: ignore [untyped-import]
 import psycopg2
-# pyrefly: ignore [untyped-import]
 from psycopg2.extras import RealDictCursor
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,7 +10,6 @@ from dotenv import load_dotenv
 from google import genai
 from groq import Groq
 
-# 1. Initialize environment properties and credentials
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 
@@ -26,19 +23,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize our twin cloud AI drivers
 gemini_client = genai.Client()
 # pyrefly: ignore [untyped-import]
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 # --- STATE CONTEXT MEMORY VAULT ---
-# This temporary dictionary stores histories like: {"session_abc": [{"role": "user", "content": "..."}, ...]}
+# Tracks message histories and persistent session category locks inside server RAM
 SESSION_MEMORY = {}
 
-# Expand our incoming tracking layout to expect a session identification tag
 class ChatRequest(BaseModel):
     user_message: str
-    session_id: str = "default_shopper" # Fallback tracking session default tag
+    session_id: str = "default_shopper"
 
 def get_db_connection():
     return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
@@ -51,111 +46,138 @@ def get_gemini_embedding(text: str):
     # pyrefly: ignore [unsupported-operation]
     return response.embeddings[0].values
 
-@app.get("/api/products")
-def get_products():
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT base_product_id, name, category, description, customization_matrix FROM products")
-        records = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        return records
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database query failure: {str(e)}")
-
 @app.post("/api/chat")
 def handle_concierge_chat(payload: ChatRequest):
     try:
         user_input = payload.user_message
         session_key = payload.session_id
         
-        # 1. If this is a brand new user session, open up a fresh history log book for them
+        # Initialize storage architecture if it is a fresh session key
         if session_key not in SESSION_MEMORY:
-            SESSION_MEMORY[session_key] = []
+            SESSION_MEMORY[session_key] = {
+                "messages": [],
+                "active_category": None
+            }
             
-        # 2. Convert user text to vector coordinates
+        user_msg_lower = user_input.lower()
+        
+        # 1. CATEGORY LOCK MATRIX: Catch explicit intent to browse a new department
+        category_keywords = {
+            "suits - men": "Suits - Men", "men suit": "Suits - Men", "mens suit": "Suits - Men",
+            "suits - women": "Suits - Women", "women suit": "Suits - Women", "womens suit": "Suits - Women",
+            "gown": "Gowns",
+            "saree": "Sarees",
+            "coats - men": "Coats - Men", "men coat": "Coats - Men",
+            "coats - women": "Coats - Women", "women coat": "Coats - Women",
+            "scarfs - men": "Scarfs - Men", "men scarf": "Scarfs - Men",
+            "scarfs - women": "Scarfs - Women", "women scarf": "Scarfs - Women"
+        }
+        
+        explicit_switch = False
+        for keyword, category_name in category_keywords.items():
+            if keyword in user_msg_lower:
+                SESSION_MEMORY[session_key]["active_category"] = category_name
+                explicit_switch = True
+                break
+                
+        # 2. Convert active intent text into vector coordinates
         query_vector = get_gemini_embedding(user_input)
         
-        # 3. Query PostgreSQL vector table to find the best relevant match
+        # 3. DATABASE SEARCH ENGINE: Enforce context-locking retrieval loops
         conn = get_db_connection()
         cursor = conn.cursor()
-        search_query = """
-        SELECT p.name, p.category, p.description, p.customization_matrix
-        FROM catalog_embeddings c
-        JOIN products p ON c.base_product_id = p.base_product_id
-        ORDER BY c.embedding <=> %s::vector
-        LIMIT 1;
-        """
-        cursor.execute(search_query, (query_vector,))
-        db_match = cursor.fetchone()
+        
+        current_locked_cat = SESSION_MEMORY[session_key]["active_category"]
+        
+        if current_locked_cat and not explicit_switch:
+            # STICKY CATEGORY FILTER: Pull alternative choices only from the active locked department
+            search_query = """
+            SELECT p.base_product_id, p.name, p.category, p.description, p.customization_matrix
+            FROM catalog_embeddings c
+            JOIN products p ON c.base_product_id = p.base_product_id
+            WHERE p.category = %s
+            ORDER BY c.embedding <=> %s::vector
+            LIMIT 4;
+            """
+            cursor.execute(search_query, (current_locked_cat, query_vector))
+        else:
+            # FLOOR SEARCH: Search across all 160 varieties if category is neutral or switching
+            search_query = """
+            SELECT p.base_product_id, p.name, p.category, p.description, p.customization_matrix
+            FROM catalog_embeddings c
+            JOIN products p ON c.base_product_id = p.base_product_id
+            ORDER BY c.embedding <=> %s::vector
+            LIMIT 4;
+            """
+            cursor.execute(search_query, (query_vector,))
+            
+        db_matches = cursor.fetchall()
         cursor.close()
         conn.close()
         
-        if not db_match:
-            raise HTTPException(status_code=404, detail="No inventory products found.")
+        if not db_matches:
+            raise HTTPException(status_code=404, detail="No matching apparel records found.")
             
-        # 4. Construct our underlying data grounding instruction
-        # STEP 3: Upgrade the instruction to force a high-end human salesman persona
-# STEP 3: The Complete Master Union AI Salesman Prompt Layout
+        # Fallback category tag initialization
+        if not SESSION_MEMORY[session_key]["active_category"]:
+            SESSION_MEMORY[session_key]["active_category"] = db_matches[0]["category"]
+            
+        # 4. Extract options and construct the context grounding block text
+        inventory_context_string = ""
+        for index, item in enumerate(db_matches, 1):
+            inventory_context_string += (
+                f"ITEM {index}:\n"
+                f"ID: {item['base_product_id']}\n"
+                f"Name: {item['name']}\n"
+                f"Category: {item['category']}\n"
+                f"Description: {item['description']}\n"
+                f"Matrix: {json.dumps(item['customization_matrix'])}\n"
+                f"----------------------------------------\n"
+            )
+
+        # 5. THE COMPLETE MASTER UNION AI SALESMAN PROMPT CONFIGURATION
         system_instruction = (
-            "You are Marco, an elite, highly persuasive human fashion consultant, salesman, and structured bespoke personal stylist for 'Agents_For_E-Business'.\n"
-            "Your tone must be warm, sophisticated, conversational, and direct. Your layout presentation must be immaculate, avoiding overwhelming walls of text, dense clusters of lines, or raw markdown symbols like '**' or '*'.\n\n"
+            "You are Marco, an elite, highly persuasive human fashion consultant, salesman, and structured bespoke stylist for 'Agents_For_E-Business'.\n"
+            "Your tone must be warm, sophisticated, conversational, and direct. Your layout presentation must be immaculate, avoiding overwhelming walls of text, dense clusters of lines, or raw markdown operators like '**' or '*'.\n\n"
             
             "CRITICAL PROTOCOLS & CORE RULES:\n"
-            "1. NO HALLUCINATIONS: You are STRICTLY permitted to speak ONLY about the exact style name provided in the current grounding context. Never invent product names, options, variations, or patterns that are not explicitly stated in the context.\n"
-            "2. NO TECHNICAL JARGON: NEVER dump raw technical data, fabric weights, or code-specific dimensions (like '340g/m' or 'JSON matrix'). Instead, translate those metrics into sensory luxury benefits (e.g., 'a rich, beautifully structured mid-weight fabric that commands presence').\n"
-            "3. FORMATTING CLEANLINESS: Never wrap words, titles, or selections in double asterisks '**'. Present options using clean, simple line breaks with clear, user-friendly names instead of code tokens.\n"
-            "4. SYSTEMATIC SALES PIPELINE (Go step-by-step, one by one):\n"
-            "   - STEP 1: Identify and confirm the base garment style selection the client desires. Keep it simple and focused. Do not suggest fabrics or lining modifications yet.\n"
-            "   - STEP 2: Once the style choice is confirmed, act like a real human personal shopper and suggest exactly 2 specific premium fabric selections from the matrix next. Translate their specifications into sensory luxury benefits and ask which texture or color preference appeals to them.\n"
-            "   - STEP 3: Once the fabric choice is secured, present the available lining options from the matrix to complete the configuration request.\n"
-            "5. INTERACTIVE ACTIONS: Frame selections as beautiful clickable markdown links that point strictly to our internal app pages. Use the exact path route syntax specified below:\n"
-            "   - For a base product/style selection use format: [Style Name](/shop/item-id)\n"
-            "   - For fabric swatch modifications use format: [Apply Fabric Name](/fabric/fabric-slug)\n"
-            "   - For inner lining shell selections use format: [Apply Lining Name](/lining/lining-slug)\n\n"
+            "1. NO HALLUCINATIONS: You are STRICTLY permitted to speak ONLY about the exact product items provided in the current live data context below. Never invent product names, options, variations, or patterns that are not explicitly stated in the context.\n"
+            "2. NO TECHNICAL JARGON: NEVER dump raw technical data, fabric weights, or code-specific variables (like '340g/m' or 'JSON matrix'). Instead, translate those metrics into sensory luxury benefits (e.g., 'a rich, beautifully structured mid-weight fabric that commands presence').\n"
+            "3. FORMATTING CLEANLINESS: Never wrap words, titles, options, or selections in double asterisks '**'. Present items using clean, simple line breaks with clear, user-friendly names instead of code tokens.\n"
+            "4. HANDLING GENERIC/BROAD REQUESTS: If the user makes a broad request (e.g., 'show me some gowns', 'what other options are there', 'suits for men'), DO NOT jump straight to a single option or fabric selection. "
+            "Instead, introduce 3 distinct varieties from the context below using clean line breaks, offering a concise, alluring sensory sentence for each, and present them as clickable text links using the format: [Style Name](/shop/id).\n"
+            "5. THE SYSTEMATIC SALES DESIGN PIPELINE: Once the customer has expressed a clear preference or selected a specific silhouette from your choices, lock into that style and proceed with the step-by-step funnel sequence:\n"
+            "   - STEP 1: Acknowledge their selection elegantly and summarize the aesthetic value of that specific cut layout. Keep it focused. Do not suggest fabrics or linings yet.\n"
+            "   - STEP 2: Once the style choice is confirmed, act like a real human personal shopper and suggest exactly 2 compatible fabric options available inside that specific item's matrix data. Translate their specifications into sensory luxury benefits and ask which texture or color preference appeals to them. Present them as links: [Apply Fabric Name](/fabric/name-slug).\n"
+            "   - STEP 3: Once the fabric choice is secured, present the available inner lining options from the matrix to complete the configuration request. Present them as links: [Apply Lining Description](/lining/slug).\n"
+            "6. INTERACTIVE ACTIONS: Frame options as clean clickable markdown text links that point strictly to our internal app paths using the formats mapped out in the rules above.\n\n"
             
-            f"CURRENT SHOP FLOOR LIVE DATA CONTEXT:\n"
-            # pyrefly: ignore [bad-index]
-            f"Style Name: {db_match['name']}\n"
-            # pyrefly: ignore [bad-index]
-            f"Showroom Category: {db_match['category']}\n"
-            # pyrefly: ignore [bad-index]
-            f"Design Blueprint Overview: {db_match['description']}\n"
-            # pyrefly: ignore [bad-index]
-            f"Available Matrix Choices: {json.dumps(db_match['customization_matrix'])}\n"
+            f"CURRENT LIVE DATA WINDOW (TOP TRACKED INVENTORY MATCHES):\n"
+            f"{inventory_context_string}"
         )
         
-        # 5. Build our sliding conversation payload history package for Groq
-        # We start with our core master layout parameters
+        # 6. Assemble complete conversation array and execute network call to Groq
         groq_messages = [{"role": "system", "content": system_instruction}]
-        
-        # We append all their previous historical back-and-forth interactions secretly
-        for past_message in SESSION_MEMORY[session_key]:
+        for past_message in SESSION_MEMORY[session_key]["messages"]:
             groq_messages.append(past_message)
-            
-        # Finally, append the current incoming statement
         groq_messages.append({"role": "user", "content": user_input})
         
-        # 6. Fire the comprehensive memory sequence outbound to Groq
-        # pyrefly: ignore [no-matching-overload]
         groq_response = groq_client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=groq_messages,
-            temperature=0.5
+            temperature=0.3
         )
         
         ai_reply = groq_response.choices[0].message.content
         
-        # 7. COMMIT CURRENT EXCHANGE PERMANENTLY TO SERVER MEMORY LOG
-        SESSION_MEMORY[session_key].append({"role": "user", "content": user_input})
-        SESSION_MEMORY[session_key].append({"role": "assistant", "content": ai_reply})
+        # Commit dialog records to cache logs
+        SESSION_MEMORY[session_key]["messages"].append({"role": "user", "content": user_input})
+        SESSION_MEMORY[session_key]["messages"].append({"role": "assistant", "content": ai_reply})
         
-        # Truncate conversation window limits if memory grows past 10 turns to protect context buffers
-        if len(SESSION_MEMORY[session_key]) > 20:
-            SESSION_MEMORY[session_key] = SESSION_MEMORY[session_key][-20:]
+        if len(SESSION_MEMORY[session_key]["messages"]) > 20:
+            SESSION_MEMORY[session_key]["messages"] = SESSION_MEMORY[session_key]["messages"][-20:]
             
         return {"reply": ai_reply}
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Chat orchestration failure: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Concierge runtime interruption: {str(e)}")
