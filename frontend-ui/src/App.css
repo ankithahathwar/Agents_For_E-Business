@@ -72,16 +72,18 @@ body {
 }
 
 /* =====================================================================
-   💎 NAVBAR & CATEGORY NAVIGATION OVERHAUL
+   💎 NAVBAR & RESPONSIVE LAYOUT MECHANICS (FIXED FOR OVERLAPS)
    ===================================================================== */
 .showroom-navbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 24px;
+  padding: 0 24px;
   background-color: var(--bg-surface);
   border-bottom: 1px solid var(--border-color);
   height: 70px;
+  gap: 24px;
+  /* Prevents text elements from touching or crashing */
 }
 
 .showroom-navbar .logo {
@@ -93,10 +95,25 @@ body {
   background: linear-gradient(135deg, #ffffff 0%, var(--accent-gold) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  white-space: nowrap;
+  /* 🚫 FORCES name to stay on ONE clean line */
+  flex-shrink: 0;
+  /* Stops browser from squeezing the title text down */
+}
+
+/* Fluid center search shield container */
+.search-bar-shell {
+  flex: 1;
+  max-width: 500px;
+  /* Elegant maximum width on widescreen arrays */
+  min-width: 180px;
+  /* Safe compression minimum bounds */
+  display: flex;
 }
 
 .search-bar-shell input {
-  width: 420px;
+  width: 100%;
+  /* Fluidly stretches to fill exactly its safe designated area */
   background-color: var(--bg-primary);
   border: 1px solid var(--border-color);
   padding: 10px 16px;
@@ -120,6 +137,10 @@ body {
   font-size: 0.85rem;
   font-weight: 600;
   transition: all 0.2s;
+  white-space: nowrap;
+  /* Keeps content strictly padded without ugly breaks */
+  flex-shrink: 0;
+  /* Guards structural widget shape from flex calculations */
 }
 
 .cart-widget-trigger:hover {

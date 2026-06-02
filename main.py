@@ -176,7 +176,6 @@ def handle_concierge_chat(payload: ChatRequest):
         elif "fabric" in user_msg_lower or "material" in user_msg_lower or "swatch" in user_msg_lower:
             detected_category = "Bespoke Fabrics"
         elif has_men and fallback_cat and " - Women" in fallback_cat:
-            # Smart context flip handler if the user types "for men" with no explicit item name
             detected_category = fallback_cat.replace(" - Women", " - Men")
         elif has_women and fallback_cat and " - Men" in fallback_cat:
             detected_category = fallback_cat.replace(" - Men", " - Women")
@@ -190,31 +189,32 @@ def handle_concierge_chat(payload: ChatRequest):
         cursor = conn.cursor()
         current_locked_cat = SESSION_MEMORY[session_key]["active_category"]
         
+        db_matches = []
         # FIXED CONDITIONAL ROUTER: Always enforce the locked category partition if set
         if current_locked_cat:
-            search_query = """
-            SELECT p.base_product_id, p.name, p.category, p.description, p.customization_matrix
-            FROM catalog_embeddings c
-            JOIN products p ON c.base_product_id = p.base_product_id
-            WHERE p.category = %s
-            ORDER BY c.embedding <=> %s::vector
-            LIMIT 4;
-            """
-            cursor.execute(search_query, (current_locked_cat, query_vector))
-            db_matches = cursor.fetchall()
-            
-            # AUTOMATIC BREAKOUT SAFEGUARD: If a locked context yields 0 items due to a topic pivot,
-            # clear the filter lock and run a global fallback search so Marco doesn't claim data is missing.
-            if not db_matches:
-                SESSION_MEMORY[session_key]["active_category"] = None
-                cursor.execute("""
+            if current_locked_cat != "Bespoke Fabrics":
+                search_query = """
                 SELECT p.base_product_id, p.name, p.category, p.description, p.customization_matrix
                 FROM catalog_embeddings c
                 JOIN products p ON c.base_product_id = p.base_product_id
+                WHERE p.category = %s
                 ORDER BY c.embedding <=> %s::vector
                 LIMIT 4;
-                """, (query_vector,))
+                """
+                cursor.execute(search_query, (current_locked_cat, query_vector))
                 db_matches = cursor.fetchall()
+                
+                # AUTOMATIC BREAKOUT SAFEGUARD: Topic pivot fallback
+                if not db_matches:
+                    SESSION_MEMORY[session_key]["active_category"] = None
+                    cursor.execute("""
+                    SELECT p.base_product_id, p.name, p.category, p.description, p.customization_matrix
+                    FROM catalog_embeddings c
+                    JOIN products p ON c.base_product_id = p.base_product_id
+                    ORDER BY c.embedding <=> %s::vector
+                    LIMIT 4;
+                    """, (query_vector,))
+                    db_matches = cursor.fetchall()
         else:
             search_query = """
             SELECT p.base_product_id, p.name, p.category, p.description, p.customization_matrix
@@ -229,47 +229,73 @@ def handle_concierge_chat(payload: ChatRequest):
         cursor.close()
         conn.close()
         
-        if not db_matches:
-            raise HTTPException(status_code=404, detail="No matching apparel records located.")
-            
-        # Dynamically sync memory state to the primary product result category if it was unassigned
-        if not SESSION_MEMORY[session_key]["active_category"]:
-            # pyrefly: ignore [bad-index]
-            SESSION_MEMORY[session_key]["active_category"] = db_matches[0]["category"]
-            
         inventory_context_string = ""
-        for index, item in enumerate(db_matches, 1):
-            inventory_context_string += (
-                f"ITEM {index}:\n"
-                # pyrefly: ignore [bad-index]
-                f"ID: {item['base_product_id']}\n"
-                # pyrefly: ignore [bad-index]
-                f"Name: {item['name']}\n"
-                # pyrefly: ignore [bad-index]
-                f"Category: {item['category']}\n"
-                # pyrefly: ignore [bad-index]
-                f"Description: {item['description']}\n"
-                # pyrefly: ignore [bad-index]
-                f"Matrix: {json.dumps(item['customization_matrix'])}\n"
-                f"----------------------------------------\n"
+
+        # =====================================================================
+        # ✨ DYNAMIC INVENTORY INJECTION ROUTER
+        # =====================================================================
+        if current_locked_cat == "Bespoke Fabrics":
+            inventory_context_string = (
+                "ITEM 1:\n"
+                "ID: fabric_merino_wool\n"
+                "Name: Premium Super 140s Australian Merino Wool\n"
+                "Category: Bespoke Fabrics\n"
+                "Description: Raw high-grade structural suiting wool yarn sold independently by the linear meter. Ideal for clean drapery.\n"
+                "----------------------------------------\n"
+                "ITEM 2:\n"
+                "ID: fabric_mulberry_silk\n"
+                "Name: Mulberry Silk Filament Blend\n"
+                "Category: Bespoke Fabrics\n"
+                "Description: Pure high-sheen lightweight traditional dress silk material cuts sold independently by the meter.\n"
+                "----------------------------------------\n"
+                "ITEM 3:\n"
+                "ID: fabric_highland_tweed\n"
+                "Name: Highland Premium Tweed Weave\n"
+                "Category: Bespoke Fabrics\n"
+                "Description: Heavyset richly patterned premium autumn textile segments sold independently by the linear meter.\n"
+                "----------------------------------------\n"
             )
+        else:
+            if not db_matches:
+                raise HTTPException(status_code=404, detail="No matching apparel records located.")
+                
+            if not SESSION_MEMORY[session_key]["active_category"]:
+                # pyrefly: ignore [bad-index]
+                SESSION_MEMORY[session_key]["active_category"] = db_matches[0]["category"]
+                
+            for index, item in enumerate(db_matches, 1):
+                inventory_context_string += (
+                    f"ITEM {index}:\n"
+                    # pyrefly: ignore [bad-index]
+                    f"ID: {item['base_product_id']}\n"
+                    # pyrefly: ignore [bad-index]
+                    f"Name: {item['name']}\n"
+                    # pyrefly: ignore [bad-index]
+                    f"Category: {item['category']}\n"
+                    # pyrefly: ignore [bad-index]
+                    f"Description: {item['description']}\n"
+                    # pyrefly: ignore [bad-index]
+                    f"Matrix: {json.dumps(item['customization_matrix'])}\n"
+                    f"----------------------------------------\n"
+                )
 
         system_instruction = (
-            "You are Marco, an elite, highly persuasive human fashion consultant, salesman, and structured bespoke stylist for 'Agents_For_E-Business'.\n"
+            "You are Marco, an elite, highly persuasive human fashion consultant, salesman, and structured bespoke stylist for 'Agent Boutique'.\n"
             "Your tone must be warm, sophisticated, conversational, and direct. Your layout presentation must be immaculate, avoiding overwhelming walls of text or raw asterisks '**'.\n\n"
             
             "CRITICAL PROTOCOLS & CORE RULES:\n"
             "1. NO HALLUCINATIONS: You are STRICTLY permitted to speak ONLY about the exact product items provided in the current live data context below. Never invent product names or pricing structures.\n"
             "2. NO FINANCIAL OR PAYMENT DISCUSSIONS: You have absolutely ZERO authority to handle checkout links, invoice calculations, pricing balances, or banking configurations. Never process or speak about payment links or transactions. "
-            "Once a configuration is completed at STEP 3, explicitly instruct the user to hit the 'Add This Configured Cut To Bag' user-interface button to proceed manually.\n"
+            "Once a configuration is completed, explicitly instruct the user to hit the action buttons on the user interface to proceed manually.\n"
             "3. NO TECHNICAL JARGON: Never state raw weights or matrix keys. Translate specifications into sensory benefits.\n"
             "4. FORMATTING CLEANLINESS: Never wrap words, titles, options, or selections in double asterisks '**'. Present items using clean, simple line breaks with user-friendly text labels.\n"
-            "5. HANDLING GENERIC/BROAD REQUESTS: If the user makes a broad query ('show me some gowns', 'what other options are there'), introduce 3 distinct varieties from the context below using clean line breaks with clickable text links using format: [Style Name](/shop/id).\n"
-            "6. THE SYSTEMATIC SALES DESIGN PIPELINE: Once the customer selects a specific silhouette, lock into that style and proceed step-by-step:\n"
+            "5. HANDLING GENERIC/BROAD REQUESTS: If the user makes a broad query ('show me some gowns', 'what options are there'), introduce 3 distinct varieties from the context below using clean line breaks with clickable text links using format: [Style Name](/shop/id).\n"
+            "6. SPECIAL PROTOCOL FOR FABRIC VAULT: If the active context contains independent raw materials (Bespoke Fabrics), confirm warmly that we proudly sell premium fabric lengths separately by the meter! Present the raw items using format: [Purchase Material Name](/fabric/vault) and instruct them to use the interactive sizing stepper controls on the grid card to add it to their bag.\n"
+            "7. THE SYSTEMATIC SALES DESIGN PIPELINE FOR APPAREL: Once the customer selects a specific apparel silhouette, lock into that style and proceed step-by-step:\n"
             "   - STEP 1: Acknowledge their selection elegantly and summarize the aesthetic value of that specific cut layout. Do not suggest fabrics or linings yet.\n"
             "   - STEP 2: Once confirmed, suggest exactly 2 compatible fabric choices from that specific item's matrix data using sensory language luxury descriptions. Present them as links: [Apply Fabric Name](/fabric/name-slug).\n"
             "   - STEP 3: Once they pick a fabric, present the available inner lining options from the matrix to complete the profile. Present them as links: [Apply Lining Description](/lining/slug). Then stop and guide them to the Bag button.\n"
-            "7. INTERACTIVE ACTIONS: Frame options as clean clickable markdown text links that point strictly to our internal app paths using the formats mapped out in the rules above.\n\n"
+            "8. INTERACTIVE ACTIONS: Frame options as clean clickable markdown text links that point strictly to our internal app paths using the formats mapped out in the rules above.\n\n"
             
             f"CURRENT LIVE DATA WINDOW (TOP TRACKED INVENTORY MATCHES):\n"
             f"{inventory_context_string}"
