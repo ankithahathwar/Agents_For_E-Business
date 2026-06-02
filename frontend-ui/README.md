@@ -1,4 +1,3 @@
-```markdown
 # 🌟 Agents_For_E-Business: Marco Bespoke Core
 
 An elite, full-stack AI-driven e-commerce platform and tailored customization engine for luxury apparel. The system pairs a high-performance **React (Vite)** frontend storefront with a stateless **FastAPI (RESTful)** intelligent core backend. It uses semantic vector search over a 160-item catalog powered by **PostgreSQL (Neon with pgvector)** and hooks into **Groq (Llama 3.3 70B)** to drive an elite digital concierge assistant ("Marco") operating through a strict, anti-hallucination sales funnel.
@@ -58,24 +57,6 @@ CREATE TABLE products (
     description TEXT,
     customization_matrix JSONB NOT NULL
 );
-
-```
-
-### 2. `orders` Table
-
-Captures completed state configurations submitted from customer order bags.
-
-```sql
-CREATE TABLE orders (
-    order_id SERIAL PRIMARY KEY,
-    session_id VARCHAR(50) NOT NULL,
-    items_payload TEXT NOT NULL,
-    order_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-```
-
----
 
 ## 💻 Local Workspace Installation Guide
 
