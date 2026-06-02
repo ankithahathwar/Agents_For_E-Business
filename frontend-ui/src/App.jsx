@@ -15,6 +15,7 @@ function App() {
   // Advanced Cart State Engine
   const [cart, setCart] = useState([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [backendError, setBackendError] = useState(null);
 
   // Chatbot Connection States
   const [messages, setMessages] = useState([
@@ -26,14 +27,25 @@ function App() {
 
   const chatEndRef = useRef(null);
 
-  // Fetch all 160 items from your Postgres database server
+  // Fetch all 160 items from your Postgres database server with safety wrappers
   useEffect(() => {
     fetch('http://127.0.0.1:8000/api/products')
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) setCatalog(data);
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP Error Status: ${res.status}`);
+        return res.json();
       })
-      .catch(err => console.error("Database sync disruption:", err));
+      .then(data => {
+        if (Array.isArray(data)) {
+          setCatalog(data);
+          setBackendError(null);
+        } else {
+          setBackendError("Database returned an invalid layout map structure.");
+        }
+      })
+      .catch(err => {
+        console.error("Database sync disruption:", err);
+        setBackendError("Cannot connect to your FastAPI server. Make sure 'uvicorn main:app --reload' is running on port 8000.");
+      });
   }, []);
 
   useEffect(() => {
@@ -90,7 +102,6 @@ function App() {
 
   // TEXT SCRUBBER CLEANER: Completely strips raw asterisks out of text nodes while drawing clean link inputs
   const formatAndParseChatText = (text) => {
-    // 1. Strip raw double and single asterisks completely
     let scrubbedText = text.replace(/\*\*/g, '').replace(/\*/g, '•');
 
     const regex = /\[([^\]]+)\]\(([^)]+)\)/g;
@@ -124,7 +135,6 @@ function App() {
       if (!product) return;
 
       setCart(prevCart => {
-        // Look if this specific garment configuration is already sitting in the bag
         const existingIndex = prevCart.findIndex(item =>
           item.id === product.base_product_id &&
           item.fabric?.name === activeFabric?.name &&
@@ -291,7 +301,16 @@ function App() {
         </div>
 
         <div className="product-view-container">
-          {selectedProduct ? (
+          {backendError ? (
+            /* CONNECTION SHIELD MODULE */
+            <div style={{ padding: '30px', background: '#2a1414', border: '1px solid #ef4444', borderRadius: '8px', color: '#fca5a5', textAlign: 'left', maxWidth: '600px', margin: '0 auto' }}>
+              <h4 style={{ margin: '0 0 10px 0', fontSize: '1.1rem' }}>⚠️ Showroom Connection Error</h4>
+              <p style={{ fontSize: '0.9rem', lineHeight: '1.5', color: '#cbd5e1' }}>{backendError}</p>
+              <button onClick={() => window.location.reload()} style={{ marginTop: '15px', background: '#ef4444', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: '700', cursor: 'pointer' }}>
+                Retry Network Sync
+              </button>
+            </div>
+          ) : selectedProduct ? (
 
             /* VIEW TIER A: LIVE CUSTOMIZABLE PRODUCT RUNTIME BLOCK */
             <div className="product-detail-page">
@@ -304,7 +323,7 @@ function App() {
                   <h2>{selectedProduct.name}</h2>
                   <p className="description-text">{selectedProduct.description}</p>
 
-                  {/* LIVE MERGED CONFIGURATION ATTRIBUTE SUMMARY DISPLAY MODULE */}
+                  {/* LIVE CONFIGURATION PANEL SUMMARY */}
                   <div className="customization-status-card-box">
                     <h4>Current Order Profile Specifications:</h4>
                     <p>🧵 Foundation Fabric Selection: <strong style={{ color: '#3b82f6' }}>{activeFabric ? activeFabric.name : 'Unassigned foundation'}</strong></p>
@@ -318,7 +337,7 @@ function App() {
                 </div>
               </div>
 
-              {/* INTEGRATED MATERIAL DISCOVERY LOG: MOUNTED BELOW INDIVIDUAL STYLE PAGES */}
+              {/* OUTWARD COMPATIBLE FABRICS SPEC DIRECTORY */}
               <div className="fabric-catalog-showcase">
                 <h3>🧵 Available Compatible Foundations for {selectedProduct.name}</h3>
                 <p className="section-sub-intro">Select a material swatch below to dynamically alter this garment structure prior to ordering:</p>
@@ -338,7 +357,7 @@ function App() {
                 </div>
               </div>
 
-              {/* INTEGRATED DYNAMIC LINING ACCENT CONFIGURATION SYSTEM */}
+              {/* DYNAMIC COMPATIBLE INTERACTIVE LINING CONTROLS */}
               <div className="fabric-catalog-showcase" style={{ marginTop: '30px' }}>
                 <h3>🛡️ Inner Haberdashery Lining Structural Options</h3>
                 <div className="lining-selection-flex-row">
@@ -357,7 +376,7 @@ function App() {
             </div>
           ) : filteredCategory === 'Bespoke Fabrics' ? (
 
-            /* VIEW TIER B: INDEPENDENT FABRIC SELECTION & METER-LENGTH ORDER STATION */
+            /* VIEW TIER B: STANDALONE INDEPENDENT RAW MATERIAL STATION */
             <div className="fabric-catalog-showcase" style={{ marginTop: 0 }}>
               <h3>🧵 Global Raw Bespoke Material Vault</h3>
               <p className="section-sub-intro">Order raw premium materials independently sorted by custom cut length requirements (Meters):</p>
@@ -370,7 +389,7 @@ function App() {
 
           ) : (
 
-            /* VIEW TIER C: COMPREHENSIVE VARIABLE GRID CATALOG WINDOW */
+            /* VIEW TIER C: CORE MULTI-VARIETY TEXT SEARCH CATALOG GRID */
             <div className="catalog-grid-layout">
               {visibleProducts.map(product => (
                 <div key={product.base_product_id} className="catalog-card" onClick={() => handleProductSelect(product.base_product_id)}>
@@ -386,7 +405,7 @@ function App() {
         </div>
       </div>
 
-      {/* RIGHT VIEWPORT: PERSISTENT COMPANION AI ADVISOR INTERFACE */}
+      {/* RIGHT VIEWPORT: PERSISTENT AI SALES COMPANION SIDEBAR */}
       <div className="assistant-sidebar-pane">
         <div className="assistant-header">
           <div><h3>Marco</h3><small style={{ color: '#10b981', fontWeight: 700 }}>Personal Stylist Connoisseur</small></div>
@@ -407,7 +426,7 @@ function App() {
         </form>
       </div>
 
-      {/* MODAL SHEET: ACCESSIBLE INTERACTIVE SLIDE-OUT ORDER BAG DRAWER */}
+      {/* TRANSACTION OVERLAY SLIDE OUT DRAWER MODAL CONTAINER */}
       {isCartOpen && (
         <div className="cart-slide-out-overlay-modal">
           <div className="cart-content-drawer">
@@ -454,7 +473,7 @@ function App() {
   );
 }
 
-// Sub-component card configuration layout helper to isolate independent numeric input state changes
+// Separate subcomponent with self-encapsulated length metrics engine inputs
 function FabricLengthCard({ fabric, onAddToBag }) {
   const [length, setLength] = useState(3);
   return (
@@ -468,7 +487,6 @@ function FabricLengthCard({ fabric, onAddToBag }) {
       </div>
       <p className="fabric-stat" style={{ marginTop: '10px' }}><strong>Weave Texture:</strong> {fabric.texture}</p>
 
-      {/* SEPARATE METERS INPUT LENGTH CONTROLLER GRID */}
       <div className="fabric-purchase-length-input-control-row">
         <label>Required Cut Length:</label>
         <div className="input-stepper-flex">

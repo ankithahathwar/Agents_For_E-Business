@@ -1,7 +1,9 @@
 # pyrefly: ignore [missing-import]
 import os
 import json
+# pyrefly: ignore [untyped-import]
 import psycopg2
+# pyrefly: ignore [untyped-import]
 from psycopg2.extras import RealDictCursor
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,7 +30,6 @@ gemini_client = genai.Client()
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 # --- STATE CONTEXT MEMORY VAULT ---
-# Tracks message histories and persistent session category locks inside server RAM
 SESSION_MEMORY = {}
 
 class ChatRequest(BaseModel):
@@ -46,13 +47,32 @@ def get_gemini_embedding(text: str):
     # pyrefly: ignore [unsupported-operation]
     return response.embeddings[0].values
 
+# =====================================================================
+# ROUTE 1: THE STANDALONE WEBSITE CATALOG DOORWAY (Fixed 404!)
+# =====================================================================
+@app.get("/api/products")
+def get_all_products():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        # Grab all 160 procedural variations directly out of your Neon cloud database
+        cursor.execute("SELECT base_product_id, name, category, description, customization_matrix FROM products;")
+        products = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return products
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database catalog pull failure: {str(e)}")
+
+# =====================================================================
+# ROUTE 2: THE MASTER UNION AI SALES CONCIERGE ENDPOINT
+# =====================================================================
 @app.post("/api/chat")
 def handle_concierge_chat(payload: ChatRequest):
     try:
         user_input = payload.user_message
         session_key = payload.session_id
         
-        # Initialize storage architecture if it is a fresh session key
         if session_key not in SESSION_MEMORY:
             SESSION_MEMORY[session_key] = {
                 "messages": [],
@@ -61,7 +81,7 @@ def handle_concierge_chat(payload: ChatRequest):
             
         user_msg_lower = user_input.lower()
         
-        # 1. CATEGORY LOCK MATRIX: Catch explicit intent to browse a new department
+        # CATEGORY LOCK MATRIX
         category_keywords = {
             "suits - men": "Suits - Men", "men suit": "Suits - Men", "mens suit": "Suits - Men",
             "suits - women": "Suits - Women", "women suit": "Suits - Women", "womens suit": "Suits - Women",
@@ -80,17 +100,13 @@ def handle_concierge_chat(payload: ChatRequest):
                 explicit_switch = True
                 break
                 
-        # 2. Convert active intent text into vector coordinates
         query_vector = get_gemini_embedding(user_input)
         
-        # 3. DATABASE SEARCH ENGINE: Enforce context-locking retrieval loops
         conn = get_db_connection()
         cursor = conn.cursor()
-        
         current_locked_cat = SESSION_MEMORY[session_key]["active_category"]
         
         if current_locked_cat and not explicit_switch:
-            # STICKY CATEGORY FILTER: Pull alternative choices only from the active locked department
             search_query = """
             SELECT p.base_product_id, p.name, p.category, p.description, p.customization_matrix
             FROM catalog_embeddings c
@@ -101,7 +117,6 @@ def handle_concierge_chat(payload: ChatRequest):
             """
             cursor.execute(search_query, (current_locked_cat, query_vector))
         else:
-            # FLOOR SEARCH: Search across all 160 varieties if category is neutral or switching
             search_query = """
             SELECT p.base_product_id, p.name, p.category, p.description, p.customization_matrix
             FROM catalog_embeddings c
@@ -116,26 +131,29 @@ def handle_concierge_chat(payload: ChatRequest):
         conn.close()
         
         if not db_matches:
-            raise HTTPException(status_code=404, detail="No matching apparel records found.")
+            raise HTTPException(status_code=404, detail="No matching apparel records located.")
             
-        # Fallback category tag initialization
         if not SESSION_MEMORY[session_key]["active_category"]:
+            # pyrefly: ignore [bad-index]
             SESSION_MEMORY[session_key]["active_category"] = db_matches[0]["category"]
             
-        # 4. Extract options and construct the context grounding block text
         inventory_context_string = ""
         for index, item in enumerate(db_matches, 1):
             inventory_context_string += (
                 f"ITEM {index}:\n"
+                # pyrefly: ignore [bad-index]
                 f"ID: {item['base_product_id']}\n"
+                # pyrefly: ignore [bad-index]
                 f"Name: {item['name']}\n"
+                # pyrefly: ignore [bad-index]
                 f"Category: {item['category']}\n"
+                # pyrefly: ignore [bad-index]
                 f"Description: {item['description']}\n"
+                # pyrefly: ignore [bad-index]
                 f"Matrix: {json.dumps(item['customization_matrix'])}\n"
                 f"----------------------------------------\n"
             )
 
-        # 5. THE COMPLETE MASTER UNION AI SALESMAN PROMPT CONFIGURATION
         system_instruction = (
             "You are Marco, an elite, highly persuasive human fashion consultant, salesman, and structured bespoke stylist for 'Agents_For_E-Business'.\n"
             "Your tone must be warm, sophisticated, conversational, and direct. Your layout presentation must be immaculate, avoiding overwhelming walls of text, dense clusters of lines, or raw markdown operators like '**' or '*'.\n\n"
@@ -156,12 +174,12 @@ def handle_concierge_chat(payload: ChatRequest):
             f"{inventory_context_string}"
         )
         
-        # 6. Assemble complete conversation array and execute network call to Groq
         groq_messages = [{"role": "system", "content": system_instruction}]
         for past_message in SESSION_MEMORY[session_key]["messages"]:
             groq_messages.append(past_message)
         groq_messages.append({"role": "user", "content": user_input})
         
+        # pyrefly: ignore [no-matching-overload]
         groq_response = groq_client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=groq_messages,
@@ -170,7 +188,6 @@ def handle_concierge_chat(payload: ChatRequest):
         
         ai_reply = groq_response.choices[0].message.content
         
-        # Commit dialog records to cache logs
         SESSION_MEMORY[session_key]["messages"].append({"role": "user", "content": user_input})
         SESSION_MEMORY[session_key]["messages"].append({"role": "assistant", "content": ai_reply})
         
