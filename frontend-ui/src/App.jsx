@@ -1,6 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './App.css';
 
+// =====================================================================
+// 🌐 GLOBAL FULL-STACK ROUTING CONFIGURATION
+// =====================================================================
+// STEP 1: Paste your live Render URL here (Make sure there is NO trailing slash at the end!)
+const API_BASE = "https://agents-for-e-business.onrender.com";
+
+// (For local testing later, you can just comment out the line above and uncomment this line:)
+// const API_BASE = "http://127.0.0.1:8000";
+
 function App() {
   // Website Core States
   const [catalog, setCatalog] = useState([]);
@@ -29,7 +38,7 @@ function App() {
 
   // Fetch all 160 items from your Postgres database server with safety wrappers
   useEffect(() => {
-    fetch('https://agents-for-e-business.onrender.com/')
+    fetch(`${API_BASE}/api/products`)
       .then(res => {
         if (!res.ok) throw new Error(`HTTP Error Status: ${res.status}`);
         return res.json();
@@ -44,7 +53,12 @@ function App() {
       })
       .catch(err => {
         console.error("Database sync disruption:", err);
-        setBackendError("Cannot connect to your FastAPI server. Make sure 'uvicorn main:app --reload' is running on port 8000.");
+        // SMART ERROR DYNAMICS: Checks if you are running live or local to deliver the right hint
+        if (API_BASE.includes("localhost") || API_BASE.includes("127.0.0.1")) {
+          setBackendError("Cannot connect to your local FastAPI server. Make sure 'uvicorn main:app --reload' is running on port 8000.");
+        } else {
+          setBackendError("Connecting to cloud server... Render's free tier spins down after inactivity. Please wait 40-60 seconds for the server to wake up from its cold start, then click retry below!");
+        }
       });
   }, []);
 
@@ -75,7 +89,6 @@ function App() {
         const product = catalog.find(p => p.base_product_id === selectedProductId);
         const matrix = parseMatrix(product?.customization_matrix);
 
-        // Use loose text checks to map the conversational label onto the exact technical database option
         const targetOptionMatch = matrix.lining_options?.find(opt =>
           textLabel.toLowerCase().includes(opt.toLowerCase()) ||
           opt.toLowerCase().includes(cleanLabel.replace('apply ', ''))
@@ -85,7 +98,6 @@ function App() {
           return;
         }
       }
-      // Fallback fallback string clean mechanism
       setActiveLining(textLabel.replace(/Apply\s+/i, ''));
       return;
     }
@@ -143,7 +155,7 @@ function App() {
     return parts.length > 0 ? parts : scrubbedText;
   };
 
-  // --- RESTORED UNBROKEN MESSAGING ACTION HANDLER ---
+  // UNBROKEN MESSAGING ACTION HANDLER WITH CENTRAL API STATE BASE
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
@@ -154,7 +166,7 @@ function App() {
     setIsLoading(true);
 
     try {
-      const response = await fetch('https://agents-for-e-business.onrender.com/', {
+      const response = await fetch(`${API_BASE}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_message: userText, session_id: sessionId })
@@ -162,7 +174,7 @@ function App() {
       const data = await response.json();
       setMessages((prev) => [...prev, { role: 'assistant', content: data.reply }]);
     } catch (error) {
-      setMessages((prev) => [...prev, { role: 'assistant', content: "Server interaction break. Re-verify Python pipeline is active!" }]);
+      setMessages((prev) => [...prev, { role: 'assistant', content: "Server interaction break. Re-verify backend pipeline deployment status!" }]);
     } finally {
       setIsLoading(false);
     }
@@ -220,12 +232,12 @@ function App() {
     setIsCartOpen(true);
   };
 
-  // POSTS STATED LAYOUT DIRECTLY INTO POSTGRES REPOSITORY ORDER TABLE
+  // POSTS STATED LAYOUT DIRECTLY INTO LIVE DATABASE VIA CENTRALLY SPECIFIED URL
   const handleConfirmOrderSubmit = async () => {
     if (cart.length === 0) return;
 
     try {
-      const response = await fetch('https://agents-for-e-business.onrender.com/', {
+      const response = await fetch(`${API_BASE}/api/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -264,7 +276,6 @@ function App() {
     }
   };
 
-  // GLOBAL DYNAMIC APPAREL CRAWLER: Extracts and maps fabrics under EVERY single applicable style variant page
   const getGlobalFabricLibrary = () => {
     const uniqueFabrics = new Map();
     catalog.forEach(product => {
@@ -284,7 +295,6 @@ function App() {
     return Array.from(uniqueFabrics.values());
   };
 
-  // Filter Utilities logic pipelines
   const menuCategories = ['All', 'Bespoke Fabrics', 'Suits - Men', 'Suits - Women', 'Gowns', 'Sarees', 'Coats - Men', 'Coats - Women', 'Scarfs - Men', 'Scarfs - Women'];
   const visibleProducts = catalog.filter(p => {
     const matchesSearch = (p.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (p.category || '').toLowerCase().includes(searchQuery.toLowerCase());
@@ -349,7 +359,7 @@ function App() {
         <div className="product-view-container">
           {backendError ? (
             <div style={{ padding: '30px', background: '#2a1414', border: '1px solid #ef4444', borderRadius: '8px', color: '#fca5a5', textAlign: 'left', maxWidth: '600px', margin: '0 auto' }}>
-              <h4 style={{ margin: '0 0 10px 0', fontSize: '1.1rem' }}>⚠️ Showroom Connection Error</h4>
+              <h4 style={{ margin: '0 0 10px 0', fontSize: '1.1rem' }}>⚠️ Showroom Connection Status</h4>
               <p style={{ fontSize: '0.9rem', lineHeight: '1.5', color: '#cbd5e1' }}>{backendError}</p>
               <button onClick={() => window.location.reload()} style={{ marginTop: '15px', background: '#ef4444', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '4px', fontWeight: '700', cursor: 'pointer' }}>
                 Retry Network Sync
@@ -525,7 +535,6 @@ function App() {
   );
 }
 
-// Sub-component card configuration layout helper to isolate independent numeric input state changes
 function FabricLengthCard({ fabric, onAddToBag }) {
   const [length, setLength] = useState(3);
   return (
