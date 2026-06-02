@@ -29,7 +29,7 @@ function App() {
 
   // Fetch all 160 items from your Postgres database server with safety wrappers
   useEffect(() => {
-    fetch('http://127.0.0.1:8000/api/products')
+    fetch('https://agents-for-e-business.onrender.com/')
       .then(res => {
         if (!res.ok) throw new Error(`HTTP Error Status: ${res.status}`);
         return res.json();
@@ -154,7 +154,7 @@ function App() {
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/chat', {
+      const response = await fetch('https://agents-for-e-business.onrender.com/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_message: userText, session_id: sessionId })
@@ -225,7 +225,7 @@ function App() {
     if (cart.length === 0) return;
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/orders', {
+      const response = await fetch('https://agents-for-e-business.onrender.com/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
