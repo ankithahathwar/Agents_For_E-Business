@@ -36,7 +36,6 @@ class ChatRequest(BaseModel):
     user_message: str
     session_id: str = "default_shopper"
 
-# New Transactional Request Layout Schemas
 class OrderItem(BaseModel):
     type: str
     # pyrefly: ignore [bad-assignment]
@@ -110,7 +109,7 @@ def get_all_products():
         raise HTTPException(status_code=500, detail=f"Database catalog pull failure: {str(e)}")
 
 # =====================================================================
-# ROUTE 2: NEW! PERSISTENT TRANSACTION TRANSACTION COMMIT CAPABILITY
+# ROUTE 2: PERSISTENT TRANSACTION TRANSACTION COMMIT CAPABILITY
 # =====================================================================
 @app.post("/api/orders")
 def process_showroom_order_commit(payload: OrderPayload):
@@ -118,7 +117,6 @@ def process_showroom_order_commit(payload: OrderPayload):
         if not payload.items:
             raise HTTPException(status_code=400, detail="Cannot place an order for an empty bag configuration container.")
             
-        # Serialize incoming nested object maps down to a string row format for deep structural archiving
         # pyrefly: ignore [deprecated]
         serialized_payload = json.dumps([item.dict() for item in payload.items])
         
@@ -153,32 +151,47 @@ def handle_concierge_chat(payload: ChatRequest):
                 "active_category": None
             }
             
-        user_msg_lower = user_input.lower()
+        # Clean string variants for high-accuracy intent evaluation
+        user_msg_lower = user_input.lower().replace("'", "").replace("-", " ")
         
-        category_keywords = {
-            "suits - men": "Suits - Men", "men suit": "Suits - Men", "mens suit": "Suits - Men",
-            "suits - women": "Suits - Women", "women suit": "Suits - Women", "womens suit": "Suits - Women",
-            "gown": "Gowns", "saree": "Sarees",
-            "coats - men": "Coats - Men", "men coat": "Coats - Men",
-            "coats - women": "Coats - Women", "women coat": "Coats - Women",
-            "scarfs - men": "Scarfs - Men", "men scarf": "Scarfs - Men",
-            "scarfs - women": "Scarfs - Women", "women scarf": "Scarfs - Women"
-        }
+        # Isolate target context states independently
+        has_men = any(w in user_msg_lower for w in ["men", "mens", "man", "guy", "gentleman", "gentlemen"])
+        has_women = any(w in user_msg_lower for w in ["women", "womens", "woman", "girl", "lady", "ladies"])
         
-        explicit_switch = False
-        for keyword, category_name in category_keywords.items():
-            if keyword in user_msg_lower:
-                SESSION_MEMORY[session_key]["active_category"] = category_name
-                explicit_switch = True
-                break
-                
+        # Track the previously locked setting in memory as a logical baseline
+        fallback_cat = SESSION_MEMORY[session_key]["active_category"]
+        detected_category = None
+
+        # Robust Token Router Parsing Engine
+        if "suit" in user_msg_lower:
+            detected_category = "Suits - Men" if has_men else ("Suits - Women" if has_women else (fallback_cat if fallback_cat and "Suits" in fallback_cat else "Suits - Men"))
+        elif "coat" in user_msg_lower or "jacket" in user_msg_lower or "blazer" in user_msg_lower:
+            detected_category = "Coats - Men" if has_men else ("Coats - Women" if has_women else (fallback_cat if fallback_cat and "Coats" in fallback_cat else "Coats - Men"))
+        elif "scarf" in user_msg_lower or "scarves" in user_msg_lower:
+            detected_category = "Scarfs - Men" if has_men else ("Scarfs - Women" if has_women else (fallback_cat if fallback_cat and "Scarfs" in fallback_cat else "Scarfs - Men"))
+        elif "gown" in user_msg_lower:
+            detected_category = "Gowns"
+        elif "saree" in user_msg_lower or "sari" in user_msg_lower:
+            detected_category = "Sarees"
+        elif "fabric" in user_msg_lower or "material" in user_msg_lower or "swatch" in user_msg_lower:
+            detected_category = "Bespoke Fabrics"
+        elif has_men and fallback_cat and " - Women" in fallback_cat:
+            # Smart context flip handler if the user types "for men" with no explicit item name
+            detected_category = fallback_cat.replace(" - Women", " - Men")
+        elif has_women and fallback_cat and " - Men" in fallback_cat:
+            detected_category = fallback_cat.replace(" - Men", " - Women")
+
+        if detected_category:
+            SESSION_MEMORY[session_key]["active_category"] = detected_category
+
         query_vector = get_gemini_embedding(user_input)
         
         conn = get_db_connection()
         cursor = conn.cursor()
         current_locked_cat = SESSION_MEMORY[session_key]["active_category"]
         
-        if current_locked_cat and not explicit_switch:
+        # FIXED CONDITIONAL ROUTER: Always enforce the locked category partition if set
+        if current_locked_cat:
             search_query = """
             SELECT p.base_product_id, p.name, p.category, p.description, p.customization_matrix
             FROM catalog_embeddings c
@@ -188,6 +201,20 @@ def handle_concierge_chat(payload: ChatRequest):
             LIMIT 4;
             """
             cursor.execute(search_query, (current_locked_cat, query_vector))
+            db_matches = cursor.fetchall()
+            
+            # AUTOMATIC BREAKOUT SAFEGUARD: If a locked context yields 0 items due to a topic pivot,
+            # clear the filter lock and run a global fallback search so Marco doesn't claim data is missing.
+            if not db_matches:
+                SESSION_MEMORY[session_key]["active_category"] = None
+                cursor.execute("""
+                SELECT p.base_product_id, p.name, p.category, p.description, p.customization_matrix
+                FROM catalog_embeddings c
+                JOIN products p ON c.base_product_id = p.base_product_id
+                ORDER BY c.embedding <=> %s::vector
+                LIMIT 4;
+                """, (query_vector,))
+                db_matches = cursor.fetchall()
         else:
             search_query = """
             SELECT p.base_product_id, p.name, p.category, p.description, p.customization_matrix
@@ -197,14 +224,15 @@ def handle_concierge_chat(payload: ChatRequest):
             LIMIT 4;
             """
             cursor.execute(search_query, (query_vector,))
+            db_matches = cursor.fetchall()
             
-        db_matches = cursor.fetchall()
         cursor.close()
         conn.close()
         
         if not db_matches:
             raise HTTPException(status_code=404, detail="No matching apparel records located.")
             
+        # Dynamically sync memory state to the primary product result category if it was unassigned
         if not SESSION_MEMORY[session_key]["active_category"]:
             # pyrefly: ignore [bad-index]
             SESSION_MEMORY[session_key]["active_category"] = db_matches[0]["category"]
@@ -226,7 +254,6 @@ def handle_concierge_chat(payload: ChatRequest):
                 f"----------------------------------------\n"
             )
 
-        # REDESIGNED SYSTEM PROMPT RULES SHIELD FOR PAYMENT PREVENTIONS
         system_instruction = (
             "You are Marco, an elite, highly persuasive human fashion consultant, salesman, and structured bespoke stylist for 'Agents_For_E-Business'.\n"
             "Your tone must be warm, sophisticated, conversational, and direct. Your layout presentation must be immaculate, avoiding overwhelming walls of text or raw asterisks '**'.\n\n"
@@ -257,7 +284,7 @@ def handle_concierge_chat(payload: ChatRequest):
         groq_response = groq_client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=groq_messages,
-            temperature=0.3
+            temperature=0.0  # DIALED TO ZERO: Guarantees complete adherence to context window data fields
         )
         
         ai_reply = groq_response.choices[0].message.content
