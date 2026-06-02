@@ -69,9 +69,24 @@ function App() {
     const cleanTarget = linkTarget.toLowerCase();
     const cleanLabel = textLabel.toLowerCase();
 
-    // Context Action A: Intercept lining selection commands from Marco
+    // Context Action A: Fixed lining selection intercept link router mapping rule match loop!
     if (cleanTarget.includes('lining') || cleanTarget.includes('apply lining')) {
-      setActiveLining(textLabel);
+      if (selectedProductId) {
+        const product = catalog.find(p => p.base_product_id === selectedProductId);
+        const matrix = parseMatrix(product?.customization_matrix);
+
+        // Use loose text checks to map the conversational label onto the exact technical database option
+        const targetOptionMatch = matrix.lining_options?.find(opt =>
+          textLabel.toLowerCase().includes(opt.toLowerCase()) ||
+          opt.toLowerCase().includes(cleanLabel.replace('apply ', ''))
+        );
+        if (targetOptionMatch) {
+          setActiveLining(targetOptionMatch);
+          return;
+        }
+      }
+      // Fallback fallback string clean mechanism
+      setActiveLining(textLabel.replace(/Apply\s+/i, ''));
       return;
     }
 
@@ -128,6 +143,31 @@ function App() {
     return parts.length > 0 ? parts : scrubbedText;
   };
 
+  // --- RESTORED UNBROKEN MESSAGING ACTION HANDLER ---
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    if (!input.trim() || isLoading) return;
+
+    const userText = input;
+    setInput('');
+    setMessages((prev) => [...prev, { role: 'user', content: userText }]);
+    setIsLoading(true);
+
+    try {
+      const response = await fetch('http://127.0.0.1:8000/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_message: userText, session_id: sessionId })
+      });
+      const data = await response.json();
+      setMessages((prev) => [...prev, { role: 'assistant', content: data.reply }]);
+    } catch (error) {
+      setMessages((prev) => [...prev, { role: 'assistant', content: "Server interaction break. Re-verify Python pipeline is active!" }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // DYNAMIC TRANSACTION ENGINE: Handles nested garment configurations vs standalone fabric lengths
   const handleAddToCart = (type, fabricData = null, customLength = 3) => {
     if (type === 'apparel') {
@@ -180,6 +220,37 @@ function App() {
     setIsCartOpen(true);
   };
 
+  // POSTS STATED LAYOUT DIRECTLY INTO POSTGRES REPOSITORY ORDER TABLE
+  const handleConfirmOrderSubmit = async () => {
+    if (cart.length === 0) return;
+
+    try {
+      const response = await fetch('http://127.0.0.1:8000/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: sessionId,
+          items: cart
+        })
+      });
+
+      if (!response.ok) throw new Error("Database transaction rejected.");
+
+      const resData = await response.json();
+
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `Splendid! I have officially processed your custom layouts. Your custom profile configurations are logged under Confirmation Token Reference: #ORDER-00${resData.order_id}. Our tailors have been notified!`
+      }]);
+
+      setCart([]);
+      setIsCartOpen(false);
+      alert(`🎉 Order Allocation Confirmed Successfully!\nSaved in PostgreSQL order table index token: #00${resData.order_id}`);
+    } catch (err) {
+      alert("Fulfillment Network Interruption: Could not save order payload sequence.");
+    }
+  };
+
   const handleRemoveFromCart = (index) => {
     setCart(prev => prev.filter((_, i) => i !== index));
   };
@@ -211,30 +282,6 @@ function App() {
       }
     });
     return Array.from(uniqueFabrics.values());
-  };
-
-  const handleSendMessage = async (e) => {
-    e.preventDefault();
-    if (!input.trim() || isLoading) return;
-
-    const userText = input;
-    setInput('');
-    setMessages((prev) => [...prev, { role: 'user', content: userText }]);
-    setIsLoading(true);
-
-    try {
-      const response = await fetch('http://127.0.0.1:8000/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_message: userText, session_id: sessionId })
-      });
-      const data = await response.json();
-      setMessages((prev) => [...prev, { role: 'assistant', content: data.reply }]);
-    } catch (error) {
-      setMessages((prev) => [...prev, { role: 'assistant', content: "Server interaction break. Re-verify Python pipeline is active!" }]);
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   // Filter Utilities logic pipelines
@@ -273,7 +320,6 @@ function App() {
             ✨ MARCO BESPOKE CORE
           </div>
 
-          {/* SEARCH COMPONENT MATRIX FIELD BAR */}
           <div className="search-bar-shell">
             <input
               type="text"
@@ -302,7 +348,6 @@ function App() {
 
         <div className="product-view-container">
           {backendError ? (
-            /* CONNECTION SHIELD MODULE */
             <div style={{ padding: '30px', background: '#2a1414', border: '1px solid #ef4444', borderRadius: '8px', color: '#fca5a5', textAlign: 'left', maxWidth: '600px', margin: '0 auto' }}>
               <h4 style={{ margin: '0 0 10px 0', fontSize: '1.1rem' }}>⚠️ Showroom Connection Error</h4>
               <p style={{ fontSize: '0.9rem', lineHeight: '1.5', color: '#cbd5e1' }}>{backendError}</p>
@@ -323,7 +368,6 @@ function App() {
                   <h2>{selectedProduct.name}</h2>
                   <p className="description-text">{selectedProduct.description}</p>
 
-                  {/* LIVE CONFIGURATION PANEL SUMMARY */}
                   <div className="customization-status-card-box">
                     <h4>Current Order Profile Specifications:</h4>
                     <p>🧵 Foundation Fabric Selection: <strong style={{ color: '#3b82f6' }}>{activeFabric ? activeFabric.name : 'Unassigned foundation'}</strong></p>
@@ -337,7 +381,6 @@ function App() {
                 </div>
               </div>
 
-              {/* OUTWARD COMPATIBLE FABRICS SPEC DIRECTORY */}
               <div className="fabric-catalog-showcase">
                 <h3>🧵 Available Compatible Foundations for {selectedProduct.name}</h3>
                 <p className="section-sub-intro">Select a material swatch below to dynamically alter this garment structure prior to ordering:</p>
@@ -357,7 +400,6 @@ function App() {
                 </div>
               </div>
 
-              {/* DYNAMIC COMPATIBLE INTERACTIVE LINING CONTROLS */}
               <div className="fabric-catalog-showcase" style={{ marginTop: '30px' }}>
                 <h3>🛡️ Inner Haberdashery Lining Structural Options</h3>
                 <div className="lining-selection-flex-row">
@@ -376,7 +418,6 @@ function App() {
             </div>
           ) : filteredCategory === 'Bespoke Fabrics' ? (
 
-            /* VIEW TIER B: STANDALONE INDEPENDENT RAW MATERIAL STATION */
             <div className="fabric-catalog-showcase" style={{ marginTop: 0 }}>
               <h3>🧵 Global Raw Bespoke Material Vault</h3>
               <p className="section-sub-intro">Order raw premium materials independently sorted by custom cut length requirements (Meters):</p>
@@ -389,7 +430,6 @@ function App() {
 
           ) : (
 
-            /* VIEW TIER C: CORE MULTI-VARIETY TEXT SEARCH CATALOG GRID */
             <div className="catalog-grid-layout">
               {visibleProducts.map(product => (
                 <div key={product.base_product_id} className="catalog-card" onClick={() => handleProductSelect(product.base_product_id)}>
@@ -405,7 +445,7 @@ function App() {
         </div>
       </div>
 
-      {/* RIGHT VIEWPORT: PERSISTENT AI SALES COMPANION SIDEBAR */}
+      {/* RIGHT VIEWPORT: PERSISTENT COMPANION AI ADVISOR INTERFACE */}
       <div className="assistant-sidebar-pane">
         <div className="assistant-header">
           <div><h3>Marco</h3><small style={{ color: '#10b981', fontWeight: 700 }}>Personal Stylist Connoisseur</small></div>
@@ -439,30 +479,42 @@ function App() {
               {cart.length === 0 ? (
                 <p style={{ color: '#666', padding: '40px 0', textAlign: 'center' }}>Your bespoke order container bag is completely empty.</p>
               ) : (
-                cart.map((item, idx) => (
-                  <div key={idx} className="cart-transaction-row-card">
-                    <div style={{ textAlign: 'left' }}>
-                      {item.type === 'apparel' ? (
-                        <>
-                          <h4>{item.name} <span className="qty-tag">x{item.quantity}</span></h4>
-                          <span className="category-subtext" style={{ fontSize: '0.75rem' }}>{item.category}</span>
-                          <p className="cart-spec-note">🧵 Base Thread: <span>{item.fabric?.name}</span></p>
-                          <p className="cart-spec-note">🛡️ Inner Lining Shell: <span>{item.lining}</span></p>
-                        </>
-                      ) : (
-                        <>
-                          <h4>{item.name} <span className="qty-tag">x{item.quantity}</span></h4>
-                          <span className="category-subtext" style={{ fontSize: '0.75rem', color: '#10b981' }}>Independent Material Cut</span>
-                          <p className="cart-spec-note">📏 Linear Length: <span>{item.length} Meters</span></p>
-                        </>
-                      )}
+                <>
+                  {cart.map((item, idx) => (
+                    <div key={idx} className="cart-transaction-row-card">
+                      <div style={{ textAlign: 'left' }}>
+                        {item.type === 'apparel' ? (
+                          <>
+                            <h4>{item.name} <span className="qty-tag">x{item.quantity}</span></h4>
+                            <span className="category-subtext" style={{ fontSize: '0.75rem' }}>{item.category}</span>
+                            <p className="cart-spec-note">🧵 Base Thread: <span>{item.fabric?.name}</span></p>
+                            <p className="cart-spec-note">🛡️ Inner Lining Shell: <span>{item.lining}</span></p>
+                          </>
+                        ) : (
+                          <>
+                            <h4>{item.name} <span className="qty-tag">x{item.quantity}</span></h4>
+                            <span className="category-subtext" style={{ fontSize: '0.75rem', color: '#10b981' }}>Independent Material Cut</span>
+                            <p className="cart-spec-note">📏 Linear Length: <span>{item.length} Meters</span></p>
+                          </>
+                        )}
+                      </div>
+                      <div className="cart-card-right-actions">
+                        <div className="cart-item-price">{item.price}</div>
+                        <button className="cart-remove-item-action-btn" onClick={() => handleRemoveFromCart(idx)}>Delete Cut</button>
+                      </div>
                     </div>
-                    <div className="cart-card-right-actions">
-                      <div className="cart-item-price">{item.price}</div>
-                      <button className="cart-remove-item-action-btn" onClick={() => handleRemoveFromCart(idx)}>Delete Cut</button>
-                    </div>
+                  ))}
+
+                  <div style={{ marginTop: '30px', borderTop: '1px solid #262626', paddingTop: '20px' }}>
+                    <button
+                      className="add-to-cart-btn"
+                      style={{ maxWidth: '100%', width: '100%', background: '#10b981' }}
+                      onClick={handleConfirmOrderSubmit}
+                    >
+                      Confirm Order Allocation & Archive to DB
+                    </button>
                   </div>
-                ))
+                </>
               )}
             </div>
           </div>
@@ -473,7 +525,7 @@ function App() {
   );
 }
 
-// Separate subcomponent with self-encapsulated length metrics engine inputs
+// Sub-component card configuration layout helper to isolate independent numeric input state changes
 function FabricLengthCard({ fabric, onAddToBag }) {
   const [length, setLength] = useState(3);
   return (
