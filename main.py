@@ -139,60 +139,76 @@ def process_showroom_order_commit(payload: OrderPayload):
 # =====================================================================
 # ROUTE 3: MASTER UNION CONCIERGE ASSISTANT LAYER (Marco)
 # =====================================================================
+# =====================================================================
+# ROUTE 3: MASTER UNION CONCIERGE ASSISTANT LAYER (Marco)
+# =====================================================================
 @app.post("/api/chat")
 def handle_concierge_chat(payload: ChatRequest):
     try:
         user_input = payload.user_message
         session_key = payload.session_id
         
+        # Initialize extended session tracking fields
         if session_key not in SESSION_MEMORY:
             SESSION_MEMORY[session_key] = {
                 "messages": [],
-                "active_category": None
+                "active_category": None,
+                "last_context_string": ""  # 👈 Memory slot to anchor your items
             }
             
-        # Clean string variants for high-accuracy intent evaluation
         user_msg_lower = user_input.lower().replace("'", "").replace("-", " ")
         
-        # Isolate target context states independently
-        has_men = any(w in user_msg_lower for w in ["men", "mens", "man", "guy", "gentleman", "gentlemen"])
-        has_women = any(w in user_msg_lower for w in ["women", "womens", "woman", "girl", "lady", "ladies"])
+        # Isolated gender routing validation
+        if "women" in user_msg_lower or "lady" in user_msg_lower or "leaves" in user_msg_lower or "woman" in user_msg_lower:
+            has_women = True
+            has_men = False
+        elif "men" in user_msg_lower or "man" in user_msg_lower or "guy" in user_msg_lower or "gentlem" in user_msg_lower:
+            has_men = True
+            has_women = False
+        else:
+            has_men = False
+            has_women = False
         
-        # Track the previously locked setting in memory as a logical baseline
         fallback_cat = SESSION_MEMORY[session_key]["active_category"]
         detected_category = None
 
-        # Robust Token Router Parsing Engine
         if "suit" in user_msg_lower:
-            detected_category = "Suits - Men" if has_men else ("Suits - Women" if has_women else (fallback_cat if fallback_cat and "Suits" in fallback_cat else "Suits - Men"))
+            detected_category = "Suits - Women" if has_women else ("Suits - Men" if has_men else (fallback_cat if fallback_cat and "Suits" in fallback_cat else "Suits - Men"))
         elif "coat" in user_msg_lower or "jacket" in user_msg_lower or "blazer" in user_msg_lower:
-            detected_category = "Coats - Men" if has_men else ("Coats - Women" if has_women else (fallback_cat if fallback_cat and "Coats" in fallback_cat else "Coats - Men"))
+            detected_category = "Coats - Women" if has_women else ("Coats - Men" if has_men else (fallback_cat if fallback_cat and "Coats" in fallback_cat else "Coats - Men"))
         elif "scarf" in user_msg_lower or "scarves" in user_msg_lower:
-            detected_category = "Scarfs - Men" if has_men else ("Scarfs - Women" if has_women else (fallback_cat if fallback_cat and "Scarfs" in fallback_cat else "Scarfs - Men"))
+            detected_category = "Scarfs - Women" if has_women else ("Scarfs - Men" if has_men else (fallback_cat if fallback_cat and "Scarfs" in fallback_cat else "Scarfs - Men"))
         elif "gown" in user_msg_lower:
             detected_category = "Gowns"
         elif "saree" in user_msg_lower or "sari" in user_msg_lower:
             detected_category = "Sarees"
         elif "fabric" in user_msg_lower or "material" in user_msg_lower or "swatch" in user_msg_lower:
             detected_category = "Bespoke Fabrics"
-        elif has_men and fallback_cat and " - Women" in fallback_cat:
-            detected_category = fallback_cat.replace(" - Women", " - Men")
-        elif has_women and fallback_cat and " - Men" in fallback_cat:
-            detected_category = fallback_cat.replace(" - Men", " - Women")
 
         if detected_category:
             SESSION_MEMORY[session_key]["active_category"] = detected_category
 
-        query_vector = get_gemini_embedding(user_input)
-        
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        current_locked_cat = SESSION_MEMORY[session_key]["active_category"]
-        
-        db_matches = []
-        # FIXED CONDITIONAL ROUTER: Always enforce the locked category partition if set
-        if current_locked_cat:
-            if current_locked_cat != "Bespoke Fabrics":
+        # 🎯 CONTEXT PERSISTENCE DETECTOR:
+        # Check if the user is asking a conversational follow-up about the existing catalog items
+        follow_up_tokens = ["3rd", "third", "1st", "first", "2nd", "second", "4th", "fourth", "one", "it", "this", "that", "about", "describe", "yes", "no"]
+        is_conversational_follow_up = (
+            SESSION_MEMORY[session_key]["last_context_string"] != "" and 
+            any(token in user_msg_lower for token in follow_up_tokens) and 
+            not detected_category
+        )
+
+        # If it is a follow-up, lock the context down instead of running a destructive vector refresh
+        if is_conversational_follow_up:
+            inventory_context_string = SESSION_MEMORY[session_key]["last_context_string"]
+        else:
+            # Run deep infrastructure search query on new topic items
+            query_vector = get_gemini_embedding(user_input)
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            current_locked_cat = SESSION_MEMORY[session_key]["active_category"]
+            db_matches = []
+            
+            if current_locked_cat and current_locked_cat != "Bespoke Fabrics":
                 search_query = """
                 SELECT p.base_product_id, p.name, p.category, p.description, p.customization_matrix
                 FROM catalog_embeddings c
@@ -203,82 +219,43 @@ def handle_concierge_chat(payload: ChatRequest):
                 """
                 cursor.execute(search_query, (current_locked_cat, query_vector))
                 db_matches = cursor.fetchall()
+            else:
+                search_query = """
+                SELECT p.base_product_id, p.name, p.category, p.description, p.customization_matrix
+                FROM catalog_embeddings c
+                JOIN products p ON c.base_product_id = p.base_product_id
+                ORDER BY c.embedding <=> %s::vector
+                LIMIT 4;
+                """
+                cursor.execute(search_query, (query_vector,))
+                db_matches = cursor.fetchall()
                 
-                # AUTOMATIC BREAKOUT SAFEGUARD: Topic pivot fallback
-                if not db_matches:
-                    SESSION_MEMORY[session_key]["active_category"] = None
-                    cursor.execute("""
-                    SELECT p.base_product_id, p.name, p.category, p.description, p.customization_matrix
-                    FROM catalog_embeddings c
-                    JOIN products p ON c.base_product_id = p.base_product_id
-                    ORDER BY c.embedding <=> %s::vector
-                    LIMIT 4;
-                    """, (query_vector,))
-                    db_matches = cursor.fetchall()
-        else:
-            search_query = """
-            SELECT p.base_product_id, p.name, p.category, p.description, p.customization_matrix
-            FROM catalog_embeddings c
-            JOIN products p ON c.base_product_id = p.base_product_id
-            ORDER BY c.embedding <=> %s::vector
-            LIMIT 4;
-            """
-            cursor.execute(search_query, (query_vector,))
-            db_matches = cursor.fetchall()
+            cursor.close()
+            conn.close()
             
-        cursor.close()
-        conn.close()
-        
-        inventory_context_string = ""
-
-        # =====================================================================
-        # ✨ DYNAMIC INVENTORY INJECTION ROUTER
-        # =====================================================================
-        if current_locked_cat == "Bespoke Fabrics":
-            inventory_context_string = (
-                "ITEM 1:\n"
-                "ID: fabric_merino_wool\n"
-                "Name: Premium Super 140s Australian Merino Wool\n"
-                "Category: Bespoke Fabrics\n"
-                "Description: Raw high-grade structural suiting wool yarn sold independently by the linear meter. Ideal for clean drapery.\n"
-                "----------------------------------------\n"
-                "ITEM 2:\n"
-                "ID: fabric_mulberry_silk\n"
-                "Name: Mulberry Silk Filament Blend\n"
-                "Category: Bespoke Fabrics\n"
-                "Description: Pure high-sheen lightweight traditional dress silk material cuts sold independently by the meter.\n"
-                "----------------------------------------\n"
-                "ITEM 3:\n"
-                "ID: fabric_highland_tweed\n"
-                "Name: Highland Premium Tweed Weave\n"
-                "Category: Bespoke Fabrics\n"
-                "Description: Heavyset richly patterned premium autumn textile segments sold independently by the linear meter.\n"
-                "----------------------------------------\n"
-            )
-        else:
-            if not db_matches:
-                raise HTTPException(status_code=404, detail="No matching apparel records located.")
-                
-            if not SESSION_MEMORY[session_key]["active_category"]:
-                # pyrefly: ignore [bad-index]
-                SESSION_MEMORY[session_key]["active_category"] = db_matches[0]["category"]
-                
-            for index, item in enumerate(db_matches, 1):
-                inventory_context_string += (
-                    f"ITEM {index}:\n"
-                    # pyrefly: ignore [bad-index]
-                    f"ID: {item['base_product_id']}\n"
-                    # pyrefly: ignore [bad-index]
-                    f"Name: {item['name']}\n"
-                    # pyrefly: ignore [bad-index]
-                    f"Category: {item['category']}\n"
-                    # pyrefly: ignore [bad-index]
-                    f"Description: {item['description']}\n"
-                    # pyrefly: ignore [bad-index]
-                    f"Matrix: {json.dumps(item['customization_matrix'])}\n"
-                    f"----------------------------------------\n"
+            inventory_context_string = ""
+            if current_locked_cat == "Bespoke Fabrics":
+                inventory_context_string = (
+                    "ITEM 1:\nID: fabric_merino_wool\nName: Premium Super 140s Australian Merino Wool\nCategory: Bespoke Fabrics\nDescription: Raw high-grade structural suiting wool yarn sold independently by the linear meter.\n----------------------------------------\n"
+                    "ITEM 2:\nID: fabric_mulberry_silk\nName: Mulberry Silk Filament Blend\nCategory: Bespoke Fabrics\nDescription: Pure high-sheen lightweight traditional dress silk material cuts sold independently by the meter.\n----------------------------------------\n"
+                    "ITEM 3:\nID: fabric_highland_tweed\nName: Highland Premium Tweed Weave\nCategory: Bespoke Fabrics\nDescription: Heavyset richly patterned premium autumn textile segments sold independently by the linear meter.\n----------------------------------------\n"
                 )
+            else:
+                if not db_matches:
+                    raise HTTPException(status_code=404, detail="No matching apparel records located.")
+                if not SESSION_MEMORY[session_key]["active_category"]:
+                    # pyrefly: ignore [bad-index]
+                    SESSION_MEMORY[session_key]["active_category"] = db_matches[0]["category"]
+                for index, item in enumerate(db_matches, 1):
+                    inventory_context_string += (
+                        # pyrefly: ignore [bad-index]
+                        f"ITEM {index}:\nf'ID: {item['base_product_id']}\nName: {item['name']}\nCategory: {item['category']}\nDescription: {item['description']}\nMatrix: {json.dumps(item['customization_matrix'])}\n----------------------------------------\n"
+                    )
+            
+            # Cache the newly generated context string for the next turn loop reference
+            SESSION_MEMORY[session_key]["last_context_string"] = inventory_context_string
 
+        # Master prompt injection execution
         system_instruction = (
             "You are Marco, an elite, highly persuasive human fashion consultant, salesman, and structured bespoke stylist for 'Agent Boutique'.\n"
             "Your tone must be warm, sophisticated, conversational, and direct. Your layout presentation must be immaculate, avoiding overwhelming walls of text or raw asterisks '**'.\n\n"
@@ -317,11 +294,10 @@ def handle_concierge_chat(payload: ChatRequest):
         groq_response = groq_client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=groq_messages,
-            temperature=0.0  # DIALED TO ZERO: Guarantees complete adherence to context window data fields
+            temperature=0.0
         )
         
         ai_reply = groq_response.choices[0].message.content
-        
         SESSION_MEMORY[session_key]["messages"].append({"role": "user", "content": user_input})
         SESSION_MEMORY[session_key]["messages"].append({"role": "assistant", "content": ai_reply})
         
