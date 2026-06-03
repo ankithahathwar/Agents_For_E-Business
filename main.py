@@ -142,67 +142,69 @@ def process_showroom_order_commit(payload: OrderPayload):
 # =====================================================================
 # ROUTE 3: MASTER UNION CONCIERGE ASSISTANT LAYER (Marco)
 # =====================================================================
+# =====================================================================
+# ROUTE 3: MASTER UNION CONCIERGE ASSISTANT LAYER (Marco) - HARDENED
+# =====================================================================
 @app.post("/api/chat")
 def handle_concierge_chat(payload: ChatRequest):
-    try:
-        user_input = payload.user_message
-        session_key = payload.session_id
-        
-        # Initialize extended session tracking fields
-        if session_key not in SESSION_MEMORY:
-            SESSION_MEMORY[session_key] = {
-                "messages": [],
-                "active_category": None,
-                "last_context_string": ""  # 👈 Memory slot to anchor your items
-            }
-            
-        user_msg_lower = user_input.lower().replace("'", "").replace("-", " ")
-        
-        # Isolated gender routing validation
-        if "women" in user_msg_lower or "lady" in user_msg_lower or "leaves" in user_msg_lower or "woman" in user_msg_lower:
-            has_women = True
-            has_men = False
-        elif "men" in user_msg_lower or "man" in user_msg_lower or "guy" in user_msg_lower or "gentlem" in user_msg_lower:
-            has_men = True
-            has_women = False
-        else:
-            has_men = False
-            has_women = False
-        
-        fallback_cat = SESSION_MEMORY[session_key]["active_category"]
-        detected_category = None
+    session_key = payload.session_id
+    
+    # 1. Initialize session memory safely
+    if session_key not in SESSION_MEMORY:
+        SESSION_MEMORY[session_key] = {
+            "messages": [],
+            "active_category": None,
+            "last_context_string": ""
+        }
+    
+    user_input = payload.user_message
+    user_msg_lower = user_input.lower().replace("'", "").replace("-", " ")
+    
+    # Isolated gender routing validation
+    if "women" in user_msg_lower or "lady" in user_msg_lower or "leaves" in user_msg_lower or "woman" in user_msg_lower:
+        has_women = True
+        has_men = False
+    elif "men" in user_msg_lower or "man" in user_msg_lower or "guy" in user_msg_lower or "gentlem" in user_msg_lower:
+        has_men = True
+        has_women = False
+    else:
+        has_men = False
+        has_women = False
+    
+    fallback_cat = SESSION_MEMORY[session_key]["active_category"]
+    detected_category = None
 
-        if "suit" in user_msg_lower:
-            detected_category = "Suits - Women" if has_women else ("Suits - Men" if has_men else (fallback_cat if fallback_cat and "Suits" in fallback_cat else "Suits - Men"))
-        elif "coat" in user_msg_lower or "jacket" in user_msg_lower or "blazer" in user_msg_lower:
-            detected_category = "Coats - Women" if has_women else ("Coats - Men" if has_men else (fallback_cat if fallback_cat and "Coats" in fallback_cat else "Coats - Men"))
-        elif "scarf" in user_msg_lower or "scarves" in user_msg_lower:
-            detected_category = "Scarfs - Women" if has_women else ("Scarfs - Men" if has_men else (fallback_cat if fallback_cat and "Scarfs" in fallback_cat else "Scarfs - Men"))
-        elif "gown" in user_msg_lower:
-            detected_category = "Gowns"
-        elif "saree" in user_msg_lower or "sari" in user_msg_lower:
-            detected_category = "Sarees"
-        elif "fabric" in user_msg_lower or "material" in user_msg_lower or "swatch" in user_msg_lower:
-            detected_category = "Bespoke Fabrics"
+    if "suit" in user_msg_lower:
+        detected_category = "Suits - Women" if has_women else ("Suits - Men" if has_men else (fallback_cat if fallback_cat and "Suits" in fallback_cat else "Suits - Men"))
+    elif "coat" in user_msg_lower or "jacket" in user_msg_lower or "blazer" in user_msg_lower:
+        detected_category = "Coats - Women" if has_women else ("Coats - Men" if has_men else (fallback_cat if fallback_cat and "Coats" in fallback_cat else "Coats - Men"))
+    elif "scarf" in user_msg_lower or "scarves" in user_msg_lower:
+        detected_category = "Scarfs - Women" if has_women else ("Scarfs - Men" if has_men else (fallback_cat if fallback_cat and "Scarfs" in fallback_cat else "Scarfs - Men"))
+    elif "gown" in user_msg_lower:
+        detected_category = "Gowns"
+    elif "saree" in user_msg_lower or "sari" in user_msg_lower:
+        detected_category = "Sarees"
+    elif "fabric" in user_msg_lower or "material" in user_msg_lower or "swatch" in user_msg_lower:
+        detected_category = "Bespoke Fabrics"
 
-        if detected_category:
-            SESSION_MEMORY[session_key]["active_category"] = detected_category
+    if detected_category:
+        SESSION_MEMORY[session_key]["active_category"] = detected_category
 
-        # 🎯 CONTEXT PERSISTENCE DETECTOR:
-        # Check if the user is asking a conversational follow-up about the existing catalog items
-        follow_up_tokens = ["3rd", "third", "1st", "first", "2nd", "second", "4th", "fourth", "one", "it", "this", "that", "about", "describe", "yes", "no"]
-        is_conversational_follow_up = (
-            SESSION_MEMORY[session_key]["last_context_string"] != "" and 
-            any(token in user_msg_lower for token in follow_up_tokens) and 
-            not detected_category
-        )
+    # Context Persistence Check
+    follow_up_tokens = ["3rd", "third", "1st", "first", "2nd", "second", "4th", "fourth", "one", "it", "this", "that", "about", "describe", "yes", "no"]
+    is_conversational_follow_up = (
+        SESSION_MEMORY[session_key]["last_context_string"] != "" and 
+        any(token in user_msg_lower for token in follow_up_tokens) and 
+        not detected_category
+    )
 
-        # If it is a follow-up, lock the context down instead of running a destructive vector refresh
-        if is_conversational_follow_up:
-            inventory_context_string = SESSION_MEMORY[session_key]["last_context_string"]
-        else:
-            # Run deep infrastructure search query on new topic items
+    # 2. SAFE-FAIL ZONE A: Database & Vector Extraction Layer
+    if is_conversational_follow_up:
+        inventory_context_string = SESSION_MEMORY[session_key]["last_context_string"]
+    else:
+        try:
             query_vector = get_gemini_embedding(user_input)
+            
             conn = get_db_connection()
             cursor = conn.cursor()
             current_locked_cat = SESSION_MEMORY[session_key]["active_category"]
@@ -242,20 +244,29 @@ def handle_concierge_chat(payload: ChatRequest):
                 )
             else:
                 if not db_matches:
-                    raise HTTPException(status_code=404, detail="No matching apparel records located.")
-                if not SESSION_MEMORY[session_key]["active_category"]:
-                    # pyrefly: ignore [bad-index]
-                    SESSION_MEMORY[session_key]["active_category"] = db_matches[0]["category"]
-                for index, item in enumerate(db_matches, 1):
-                    inventory_context_string += (
+                    # Fallback so it doesn't crash if the query returns completely blank rows
+                    inventory_context_string = "No active products matching this specification sheet are currently loaded."
+                else:
+                    if not SESSION_MEMORY[session_key]["active_category"]:
                         # pyrefly: ignore [bad-index]
-                        f"ITEM {index}:\nf'ID: {item['base_product_id']}\nName: {item['name']}\nCategory: {item['category']}\nDescription: {item['description']}\nMatrix: {json.dumps(item['customization_matrix'])}\n----------------------------------------\n"
-                    )
+                        SESSION_MEMORY[session_key]["active_category"] = db_matches[0]["category"]
+                    for index, item in enumerate(db_matches, 1):
+                        inventory_context_string += (
+                            # pyrefly: ignore [bad-index]
+                            f"ITEM {index}:\nID: {item['base_product_id']}\nName: {item['name']}\nCategory: {item['category']}\nDescription: {item['description']}\nMatrix: {json.dumps(item['customization_matrix'])}\n----------------------------------------\n"
+                        )
             
-            # Cache the newly generated context string for the next turn loop reference
             SESSION_MEMORY[session_key]["last_context_string"] = inventory_context_string
+            
+        except Exception as db_err:
+            import traceback
+            print("⚠️ DATABASE OR EMBEDDING HICCUP DETECTED:")
+            traceback.print_exc()
+            # Fall back cleanly to the last known successful context string so the chat can live on!
+            inventory_context_string = SESSION_MEMORY[session_key]["last_context_string"] or "Showroom catalog connection is running slowly."
 
-        # Master prompt injection execution
+    # 3. SAFE-FAIL ZONE B: Large Language Model Inference Completion Layer
+    try:
         system_instruction = (
             "You are Marco, an elite, highly persuasive human fashion consultant, salesman, and structured bespoke stylist for 'Agent Boutique'.\n"
             "Your tone must be warm, sophisticated, conversational, and direct. Your layout presentation must be immaculate, avoiding overwhelming walls of text or raw asterisks '**'.\n\n"
@@ -298,6 +309,8 @@ def handle_concierge_chat(payload: ChatRequest):
         )
         
         ai_reply = groq_response.choices[0].message.content
+        
+        # Log successful turns into chat history
         SESSION_MEMORY[session_key]["messages"].append({"role": "user", "content": user_input})
         SESSION_MEMORY[session_key]["messages"].append({"role": "assistant", "content": ai_reply})
         
@@ -305,6 +318,12 @@ def handle_concierge_chat(payload: ChatRequest):
             SESSION_MEMORY[session_key]["messages"] = SESSION_MEMORY[session_key]["messages"][-20:]
             
         return {"reply": ai_reply}
+
+    except Exception as api_err:
+        import traceback
+        print("⚠️ GROQ INFERENCE COMPLETION TIMEOUT OR OVERLOAD DETECTED:")
+        traceback.print_exc()
         
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Concierge runtime interruption: {str(e)}")
+        # 🛡️ THE ULTIMATE SAFE FALLBACK: Return a 200 OK with an organic apology bubble
+        error_apology = "My apologies. Our showroom digital connection experienced a brief cloud optimization delay. Could you please re-state your last request so I can map out your design parameters flawlessly?"
+        return {"reply": error_apology}
