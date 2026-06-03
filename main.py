@@ -303,7 +303,7 @@ def handle_concierge_chat(payload: ChatRequest):
         
         # pyrefly: ignore [no-matching-overload]
         groq_response = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="llama-3.1-8b-instant",
             messages=groq_messages,
             temperature=0.0
         )
