@@ -176,18 +176,16 @@ def classify_user_intent(user_message: str) -> str:
 def handle_concierge_chat(payload: ChatRequest):
     user_input = payload.user_message
     
-    # 🛑 THE FIREWALL GATEKEEPER CHECK:
+    # 🛑 1. FIREWALL GATEKEEPER CHECK
     intent = classify_user_intent(user_input)
     if "OFF_TOPIC" in intent:
-        # Shut down the execution pipeline immediately!
-        # No DB calls, no embeddings, zero history pollution.
         return {
             "reply": "I am here exclusively as your personal stylist at Agent Boutique. Let's return to designing your premium apparel layers. What category can I help you map out today?"
         }
         
     session_key = payload.session_id
     
-    # 1. Initialize session memory safely
+    # Initialize session memory safely
     if session_key not in SESSION_MEMORY:
         SESSION_MEMORY[session_key] = {
             "messages": [],
@@ -197,121 +195,143 @@ def handle_concierge_chat(payload: ChatRequest):
     
     user_msg_lower = user_input.lower().replace("'", "").replace("-", " ")
     
-    # ✨ Mixed gender extraction engine (Prevents keyword collision loops)
+    # 🎯 2. INTENT & GENDER EXTRACTION ENGINE
     has_both = "both" in user_msg_lower or ("men" in user_msg_lower and "women" in user_msg_lower)
+    has_women = not has_both and any(w in user_msg_lower for w in ["women", "lady", "ladies", "woman"])
+    has_men = not has_both and any(m in user_msg_lower for m in ["men", "man", "guy", "gents", "gentlem"])
     
-    if has_both:
-        has_men = False
-        has_women = False
-        SESSION_MEMORY[session_key]["active_category"] = None  # Clears lock for a global search
-    elif "women" in user_msg_lower or "lady" in user_msg_lower or "ladies" in user_msg_lower or "woman" in user_msg_lower:
-        has_women = True
-        has_men = False
-    elif "men" in user_msg_lower or "man" in user_msg_lower or "guy" in user_msg_lower or "gentlem" in user_msg_lower:
-        has_men = True
-        has_women = False
-    else:
-        has_men = False
-        has_women = False
-    
+    # Detect explicit product nouns
+    mentioned_noun = None
+    if "suit" in user_msg_lower: mentioned_noun = "Suits"
+    elif any(c in user_msg_lower for c in ["coat", "jacket", "blazer"]): mentioned_noun = "Coats"
+    elif any(s in user_msg_lower for s in ["scarf", "scarves"]): mentioned_noun = "Scarfs"
+    elif "gown" in user_msg_lower: mentioned_noun = "Gowns"
+    elif "saree" in user_msg_lower or "sari" in user_msg_lower: mentioned_noun = "Sarees"
+    elif any(f in user_msg_lower for f in ["fabric", "material", "swatch"]): mentioned_noun = "Bespoke Fabrics"
+
+    # 🔄 3. STATE MACHINE TRANSITION LOGIC
     fallback_cat = SESSION_MEMORY[session_key]["active_category"]
     detected_category = None
+    inventory_context_string = ""
+    is_ambiguous_turn = False
 
-    if "suit" in user_msg_lower:
-        if has_both:
-            detected_category = None 
-        else:
-            detected_category = "Suits - Women" if has_women else ("Suits - Men" if has_men else (fallback_cat if fallback_cat and "Suits" in fallback_cat else "Suits - Men"))
-    elif "coat" in user_msg_lower or "jacket" in user_msg_lower or "blazer" in user_msg_lower:
-        detected_category = "Coats - Women" if has_women else ("Coats - Men" if has_men else (fallback_cat if fallback_cat and "Coats" in fallback_cat else "Coats - Men"))
-    elif "scarf" in user_msg_lower or "scarves" in user_msg_lower:
-        detected_category = "Scarfs - Women" if has_women else ("Scarfs - Men" if has_men else (fallback_cat if fallback_cat and "Scarfs" in fallback_cat else "Scarfs - Men"))
-    elif "gown" in user_msg_lower:
-        detected_category = "Gowns"
-    elif "saree" in user_msg_lower or "sari" in user_msg_lower:
-        detected_category = "Sarees"
-    elif "fabric" in user_msg_lower or "material" in user_msg_lower or "swatch" in user_msg_lower:
-        detected_category = "Bespoke Fabrics"
+    # Check context history state
+    has_cached_context = SESSION_MEMORY[session_key]["last_context_string"] != ""
+    if has_cached_context:
+        follow_up_tokens = ["3rd", "third", "1st", "first", "2nd", "second", "4th", "fourth", "one", "it", "this", "that", "about", "describe", "yes", "no"]
+        is_conversational_follow_up = any(token in user_msg_lower for token in follow_up_tokens) and not mentioned_noun and not has_women and not has_men
+    else:
+        is_conversational_follow_up = False
 
-    if detected_category:
-        SESSION_MEMORY[session_key]["active_category"] = detected_category
-
-    # Context Persistence Check
-    follow_up_tokens = ["3rd", "third", "1st", "first", "2nd", "second", "4th", "fourth", "one", "it", "this", "that", "about", "describe", "yes", "no"]
-    is_conversational_follow_up = (
-        SESSION_MEMORY[session_key]["last_context_string"] != "" and 
-        any(token in user_msg_lower for token in follow_up_tokens) and 
-        not detected_category
-    )
-
-    # 2. SAFE-FAIL ZONE A: Database & Vector Extraction Layer
+    # 🔄 Route actions based on conversational state evaluation
     if is_conversational_follow_up:
         inventory_context_string = SESSION_MEMORY[session_key]["last_context_string"]
     else:
-        try:
-            query_vector = get_gemini_embedding(user_input)
-            
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            current_locked_cat = SESSION_MEMORY[session_key]["active_category"]
-            db_matches = []
-            
-            if current_locked_cat and current_locked_cat != "Bespoke Fabrics":
-                search_query = """
-                SELECT p.base_product_id, p.name, p.category, p.description, p.customization_matrix
-                FROM catalog_embeddings c
-                JOIN products p ON c.base_product_id = p.base_product_id
-                WHERE p.category = %s
-                ORDER BY c.embedding <=> %s::vector
-                LIMIT 10;
-                """
-                cursor.execute(search_query, (current_locked_cat, query_vector))
-                db_matches = cursor.fetchall()
+        # Evaluate state changes based on noun context
+        if mentioned_noun:
+            if mentioned_noun in ["Gowns", "Sarees", "Bespoke Fabrics"]:
+                detected_category = mentioned_noun
+            elif has_both:
+                detected_category = None # Global multi-pull
+            elif has_women:
+                detected_category = f"{mentioned_noun} - Women"
+            elif has_men:
+                detected_category = f"{mentioned_noun} - Men"
             else:
-                search_query = """
-                SELECT p.base_product_id, p.name, p.category, p.description, p.customization_matrix
-                FROM catalog_embeddings c
-                JOIN products p ON c.base_product_id = p.base_product_id
-                ORDER BY c.embedding <=> %s::vector
-                LIMIT 10;
-                """
-                cursor.execute(search_query, (query_vector,))
-                db_matches = cursor.fetchall()
-                
-            cursor.close()
-            conn.close()
-            
-            inventory_context_string = ""
-            if current_locked_cat == "Bespoke Fabrics":
-                inventory_context_string = (
-                    "ITEM 1:\nID: fabric_merino_wool\nName: Premium Super 140s Australian Merino Wool\nCategory: Bespoke Fabrics\nDescription: Raw high-grade structural suiting wool yarn sold independently by the linear meter.\n----------------------------------------\n"
-                    "ITEM 2:\nID: fabric_mulberry_silk\nName: Mulberry Silk Filament Blend\nCategory: Bespoke Fabrics\nDescription: Pure high-sheen lightweight traditional dress silk material cuts sold independently by the meter.\n----------------------------------------\n"
-                    "ITEM 3:\nID: fabric_highland_tweed\nName: Highland Premium Tweed Weave\nCategory: Bespoke Fabrics\nDescription: Heavyset richly patterned premium autumn textile segments sold independently by the linear meter.\n----------------------------------------\n"
-                )
-            else:
-                if not db_matches:
-                    # Fallback so it doesn't crash if the query returns completely blank rows
-                    inventory_context_string = "No active products matching this specification sheet are currently loaded."
+                if fallback_cat and ("Men" in fallback_cat or "Women" in fallback_cat):
+                    gender_suffix = "Men" if "Men" in fallback_cat else "Women"
+                    detected_category = f"{mentioned_noun} - {gender_suffix}"
                 else:
-                    if not SESSION_MEMORY[session_key]["active_category"]:
-                        # pyrefly: ignore [bad-index]
-                        SESSION_MEMORY[session_key]["active_category"] = db_matches[0]["category"]
-                    for index, item in enumerate(db_matches, 1):
-                        inventory_context_string += (
-                            # pyrefly: ignore [bad-index]
-                            f"ITEM {index}:\nID: {item['base_product_id']}\nName: {item['name']}\nCategory: {item['category']}\nDescription: {item['description']}\nMatrix: {json.dumps(item['customization_matrix'])}\n----------------------------------------\n"
-                        )
-            
-            SESSION_MEMORY[session_key]["last_context_string"] = inventory_context_string
-            
-        except Exception as db_err:
-            import traceback
-            print("⚠️ DATABASE OR EMBEDDING HICCUP DETECTED:")
-            traceback.print_exc()
-            # Fall back cleanly to the last known successful context string so the chat can live on!
-            inventory_context_string = SESSION_MEMORY[session_key]["last_context_string"] or "Showroom catalog connection is running slowly."
+                    is_ambiguous_turn = True
+        else:
+            if fallback_cat:
+                current_noun = fallback_cat.split(" - ")[0]
+                if has_both:
+                    detected_category = None
+                elif has_women and current_noun in ["Suits", "Coats", "Scarfs"]:
+                    detected_category = f"{current_noun} - Women"
+                elif has_men and current_noun in ["Suits", "Coats", "Scarfs"]:
+                    detected_category = f"{current_noun} - Men"
+                else:
+                    detected_category = fallback_cat
+            else:
+                is_ambiguous_turn = True
 
-    # 3. SAFE-FAIL ZONE B: Large Language Model Inference Completion Layer
+        # Commit structural updates to memory state slots
+        if detected_category or has_both:
+            SESSION_MEMORY[session_key]["active_category"] = detected_category
+
+        # 🗄️ 4. SAFE-FAIL ZONE A: Database & Vector Extraction Layer
+        if is_ambiguous_turn:
+            inventory_context_string = (
+                "CRITICAL ERROR CONTEXT: The customer requested apparel items but has not explicitly "
+                "clarified whether they are looking for the Men's or Women's collection. Do NOT display or "
+                "invent any inventory products yet. You must warmly and professionally ask the customer "
+                "to clarify which gender collection they want to explore today before proceeding."
+            )
+            SESSION_MEMORY[session_key]["active_category"] = None
+        else:
+            try:
+                query_vector = get_gemini_embedding(user_input)
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                current_locked_cat = SESSION_MEMORY[session_key]["active_category"]
+                db_matches = []
+                
+                if current_locked_cat and current_locked_cat != "Bespoke Fabrics":
+                    search_query = """
+                    SELECT p.base_product_id, p.name, p.category, p.description, p.customization_matrix
+                    FROM catalog_embeddings c
+                    JOIN products p ON c.base_product_id = p.base_product_id
+                    WHERE p.category = %s
+                    ORDER BY c.embedding <=> %s::vector
+                    LIMIT 10;
+                    """
+                    cursor.execute(search_query, (current_locked_cat, query_vector))
+                    db_matches = cursor.fetchall()
+                else:
+                    search_query = """
+                    SELECT p.base_product_id, p.name, p.category, p.description, p.customization_matrix
+                    FROM catalog_embeddings c
+                    JOIN products p ON c.base_product_id = p.base_product_id
+                    ORDER BY c.embedding <=> %s::vector
+                    LIMIT 10;
+                    """
+                    cursor.execute(search_query, (query_vector,))
+                    db_matches = cursor.fetchall()
+                    
+                cursor.close()
+                conn.close()
+                
+                inventory_context_string = ""
+                if current_locked_cat == "Bespoke Fabrics":
+                    inventory_context_string = (
+                        "ITEM 1:\nID: fabric_merino_wool\nName: Premium Super 140s Australian Merino Wool\nCategory: Bespoke Fabrics\nDescription: Raw high-grade structural suiting wool yarn sold independently by the linear meter.\n----------------------------------------\n"
+                        "ITEM 2:\nID: fabric_mulberry_silk\nName: Mulberry Silk Filament Blend\nCategory: Bespoke Fabrics\nDescription: Pure high-sheen lightweight traditional dress silk material cuts sold independently by the meter.\n----------------------------------------\n"
+                        "ITEM 3:\nID: fabric_highland_tweed\nName: Highland Premium Tweed Weave\nCategory: Bespoke Fabrics\nDescription: Heavyset richly patterned premium autumn textile segments sold independently by the linear meter.\n----------------------------------------\n"
+                    )
+                else:
+                    if not db_matches:
+                        inventory_context_string = "No active products matching this specification sheet are currently loaded."
+                    else:
+                        if not SESSION_MEMORY[session_key]["active_category"]:
+                            # pyrefly: ignore [bad-index]
+                            SESSION_MEMORY[session_key]["active_category"] = db_matches[0]["category"]
+                        for index, item in enumerate(db_matches, 1):
+                            inventory_context_string += (
+                                # pyrefly: ignore [bad-index]
+                                f"ITEM {index}:\nID: {item['base_product_id']}\nName: {item['name']}\nCategory: {item['category']}\nDescription: {item['description']}\nMatrix: {json.dumps(item['customization_matrix'])}\n----------------------------------------\n"
+                            )
+                
+                SESSION_MEMORY[session_key]["last_context_string"] = inventory_context_string
+                
+            except Exception as db_err:
+                import traceback
+                print("⚠️ DATABASE OR EMBEDDING HICCUP DETECTED:")
+                traceback.print_exc()
+                inventory_context_string = SESSION_MEMORY[session_key]["last_context_string"] or "Showroom catalog connection is running slowly."
+
+    # 5. SAFE-FAIL ZONE B: Large Language Model Inference Completion Layer
     try:
         system_instruction = (
             "You are Marco, an elite, highly persuasive human fashion consultant, salesman, and structured bespoke stylist for 'Agent Boutique'.\n"
@@ -357,23 +377,16 @@ def handle_concierge_chat(payload: ChatRequest):
         
         ai_reply = groq_response.choices[0].message.content
         
-        # Log successful turns into chat history
         SESSION_MEMORY[session_key]["messages"].append({"role": "user", "content": user_input})
         SESSION_MEMORY[session_key]["messages"].append({"role": "assistant", "content": ai_reply})
         
-        if len(SESSION_MEMORY[session_key]["messages"]) > 20:
-            SESSION_MEMORY[session_key]["messages"] = SESSION_MEMORY[session_key]["messages"][-20:]
+        if len(SESSION_MEMORY[session_key]["messages"]) > 8:
+            SESSION_MEMORY[session_key]["messages"] = SESSION_MEMORY[session_key]["messages"][-8:]
             
         return {"reply": ai_reply}
 
-    # pyrefly: ignore [parse-error]
     except Exception as api_err:
         import traceback
-        
         print("⚠️ GROQ INFERENCE COMPLETION TIMEOUT OR OVERLOAD DETECTED:")
         traceback.print_exc()
-        
-        # 🛡️ THE ULTIMATE SAFE FALLBACK: Return a 200 OK with an organic apology bubble
-        error_apology = "My apologies. Our showroom digital connection experienced a brief cloud optimization delay. Could you please re-state your last request so I can map out your design parameters flawlessly?"
-        # pyrefly: ignore [invalid-syntax]
-        return {"reply": error_apology}
+        return {"reply": "My apologies. Our showroom digital connection experienced a brief cloud optimization delay. Could you please re-state your last request so I can map out your design parameters flawlessly?"}
