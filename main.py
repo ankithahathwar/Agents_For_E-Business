@@ -185,81 +185,74 @@ def handle_concierge_chat(payload: ChatRequest):
         
     session_key = payload.session_id
     
-    # Initialize session memory safely
+    # Initialize session memory securely with clean slot-state tracking
     if session_key not in SESSION_MEMORY:
         SESSION_MEMORY[session_key] = {
             "messages": [],
-            "active_category": None,
+            "active_noun": None,     # Slots tracked independently
+            "active_gender": None,   # Slots tracked independently
             "last_context_string": ""
         }
     
     user_msg_lower = user_input.lower().replace("'", "").replace("-", " ")
     
-    # 🎯 2. INTENT & GENDER EXTRACTION ENGINE
+    # 🎯 2. SLOT-STATE EXTRACTION ENGINE
     has_both = "both" in user_msg_lower or ("men" in user_msg_lower and "women" in user_msg_lower)
     has_women = not has_both and any(w in user_msg_lower for w in ["women", "lady", "ladies", "woman"])
     has_men = not has_both and any(m in user_msg_lower for m in ["men", "man", "guy", "gents", "gentlem"])
     
-    # Detect explicit product nouns
-    mentioned_noun = None
-    if "suit" in user_msg_lower: mentioned_noun = "Suits"
-    elif any(c in user_msg_lower for c in ["coat", "jacket", "blazer"]): mentioned_noun = "Coats"
-    elif any(s in user_msg_lower for s in ["scarf", "scarves"]): mentioned_noun = "Scarfs"
-    elif "gown" in user_msg_lower: mentioned_noun = "Gowns"
-    elif "saree" in user_msg_lower or "sari" in user_msg_lower: mentioned_noun = "Sarees"
-    elif any(f in user_msg_lower for f in ["fabric", "material", "swatch"]): mentioned_noun = "Bespoke Fabrics"
+    # Update Gender Slot memory if detected
+    if has_both:
+        SESSION_MEMORY[session_key]["active_gender"] = "Both"
+    elif has_women:
+        SESSION_MEMORY[session_key]["active_gender"] = "Women"
+    elif has_men:
+        SESSION_MEMORY[session_key]["active_gender"] = "Men"
 
-    # 🔄 3. STATE MACHINE TRANSITION LOGIC
-    fallback_cat = SESSION_MEMORY[session_key]["active_category"]
-    detected_category = None
+    # Update Noun Slot memory if detected
+    if "suit" in user_msg_lower: SESSION_MEMORY[session_key]["active_noun"] = "Suits"
+    elif any(c in user_msg_lower for c in ["coat", "jacket", "blazer"]): SESSION_MEMORY[session_key]["active_noun"] = "Coats"
+    elif any(s in user_msg_lower for s in ["scarf", "scarves"]): SESSION_MEMORY[session_key]["active_noun"] = "Scarfs"
+    elif "gown" in user_msg_lower: SESSION_MEMORY[session_key]["active_noun"] = "Gowns"
+    elif "saree" in user_msg_lower or "sari" in user_msg_lower: SESSION_MEMORY[session_key]["active_noun"] = "Sarees"
+    elif any(f in user_msg_lower for f in ["fabric", "material", "swatch"]): SESSION_MEMORY[session_key]["active_noun"] = "Bespoke Fabrics"
+
+    # Pull current resolved states from long-term memory
+    current_noun = SESSION_MEMORY[session_key]["active_noun"]
+    current_gender = SESSION_MEMORY[session_key]["active_gender"]
+
     inventory_context_string = ""
     is_ambiguous_turn = False
 
-    # Check context history state
+    # Context Persistence Check for Sequential Follow-ups (numbers, descriptions)
     has_cached_context = SESSION_MEMORY[session_key]["last_context_string"] != ""
     if has_cached_context:
         follow_up_tokens = ["3rd", "third", "1st", "first", "2nd", "second", "4th", "fourth", "one", "it", "this", "that", "about", "describe", "yes", "no"]
-        is_conversational_follow_up = any(token in user_msg_lower for token in follow_up_tokens) and not mentioned_noun and not has_women and not has_men
+        # Only freeze context if the user didn't explicitly shift the gender or noun slots in this turn
+        is_conversational_follow_up = any(token in user_msg_lower for token in follow_up_tokens) and not has_women and not has_men and not any(n in user_msg_lower for n in ["suit", "coat", "jacket", "blazer", "scarf", "saree", "gown"])
     else:
         is_conversational_follow_up = False
 
-    # 🔄 Route actions based on conversational state evaluation
+    # 🔄 3. CONVERSATIONAL PIPELINE ROUTING
     if is_conversational_follow_up:
         inventory_context_string = SESSION_MEMORY[session_key]["last_context_string"]
     else:
-        # Evaluate state changes based on noun context
-        if mentioned_noun:
-            if mentioned_noun in ["Gowns", "Sarees", "Bespoke Fabrics"]:
-                detected_category = mentioned_noun
-            elif has_both:
-                detected_category = None # Global multi-pull
-            elif has_women:
-                detected_category = f"{mentioned_noun} - Women"
-            elif has_men:
-                detected_category = f"{mentioned_noun} - Men"
+        # Resolve target database category strings based on slot combinations
+        detected_category = None
+        
+        if current_noun:
+            if current_noun in ["Gowns", "Sarees", "Bespoke Fabrics"]:
+                detected_category = current_noun
+            elif current_gender == "Both":
+                detected_category = None # Triggers global multi-pull
+            elif current_gender in ["Men", "Women"]:
+                detected_category = f"{current_noun} - {current_gender}"
             else:
-                if fallback_cat and ("Men" in fallback_cat or "Women" in fallback_cat):
-                    gender_suffix = "Men" if "Men" in fallback_cat else "Women"
-                    detected_category = f"{mentioned_noun} - {gender_suffix}"
-                else:
-                    is_ambiguous_turn = True
-        else:
-            if fallback_cat:
-                current_noun = fallback_cat.split(" - ")[0]
-                if has_both:
-                    detected_category = None
-                elif has_women and current_noun in ["Suits", "Coats", "Scarfs"]:
-                    detected_category = f"{current_noun} - Women"
-                elif has_men and current_noun in ["Suits", "Coats", "Scarfs"]:
-                    detected_category = f"{current_noun} - Men"
-                else:
-                    detected_category = fallback_cat
-            else:
+                # We know the item (e.g. Suits) but gender is still missing
                 is_ambiguous_turn = True
-
-        # Commit structural updates to memory state slots
-        if detected_category or has_both:
-            SESSION_MEMORY[session_key]["active_category"] = detected_category
+        else:
+            # No item noun has been specified yet in this session
+            is_ambiguous_turn = True
 
         # 🗄️ 4. SAFE-FAIL ZONE A: Database & Vector Extraction Layer
         if is_ambiguous_turn:
@@ -269,16 +262,15 @@ def handle_concierge_chat(payload: ChatRequest):
                 "invent any inventory products yet. You must warmly and professionally ask the customer "
                 "to clarify which gender collection they want to explore today before proceeding."
             )
-            SESSION_MEMORY[session_key]["active_category"] = None
+            SESSION_MEMORY[session_key]["active_gender"] = None
         else:
             try:
                 query_vector = get_gemini_embedding(user_input)
                 conn = get_db_connection()
                 cursor = conn.cursor()
-                current_locked_cat = SESSION_MEMORY[session_key]["active_category"]
                 db_matches = []
                 
-                if current_locked_cat and current_locked_cat != "Bespoke Fabrics":
+                if detected_category:
                     search_query = """
                     SELECT p.base_product_id, p.name, p.category, p.description, p.customization_matrix
                     FROM catalog_embeddings c
@@ -287,7 +279,7 @@ def handle_concierge_chat(payload: ChatRequest):
                     ORDER BY c.embedding <=> %s::vector
                     LIMIT 10;
                     """
-                    cursor.execute(search_query, (current_locked_cat, query_vector))
+                    cursor.execute(search_query, (detected_category, query_vector))
                     db_matches = cursor.fetchall()
                 else:
                     search_query = """
@@ -304,7 +296,7 @@ def handle_concierge_chat(payload: ChatRequest):
                 conn.close()
                 
                 inventory_context_string = ""
-                if current_locked_cat == "Bespoke Fabrics":
+                if detected_category == "Bespoke Fabrics":
                     inventory_context_string = (
                         "ITEM 1:\nID: fabric_merino_wool\nName: Premium Super 140s Australian Merino Wool\nCategory: Bespoke Fabrics\nDescription: Raw high-grade structural suiting wool yarn sold independently by the linear meter.\n----------------------------------------\n"
                         "ITEM 2:\nID: fabric_mulberry_silk\nName: Mulberry Silk Filament Blend\nCategory: Bespoke Fabrics\nDescription: Pure high-sheen lightweight traditional dress silk material cuts sold independently by the meter.\n----------------------------------------\n"
@@ -314,9 +306,6 @@ def handle_concierge_chat(payload: ChatRequest):
                     if not db_matches:
                         inventory_context_string = "No active products matching this specification sheet are currently loaded."
                     else:
-                        if not SESSION_MEMORY[session_key]["active_category"]:
-                            # pyrefly: ignore [bad-index]
-                            SESSION_MEMORY[session_key]["active_category"] = db_matches[0]["category"]
                         for index, item in enumerate(db_matches, 1):
                             inventory_context_string += (
                                 # pyrefly: ignore [bad-index]
