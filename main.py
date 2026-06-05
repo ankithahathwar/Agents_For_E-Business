@@ -227,8 +227,11 @@ def handle_concierge_chat(payload: ChatRequest):
     # Context Persistence Check for Sequential Follow-ups (numbers, descriptions)
     has_cached_context = SESSION_MEMORY[session_key]["last_context_string"] != ""
     if has_cached_context:
-        follow_up_tokens = ["3rd", "third", "1st", "first", "2nd", "second", "4th", "fourth", "one", "it", "this", "that", "about", "describe", "yes", "no"]
-        # Only freeze context if the user didn't explicitly shift the gender or noun slots in this turn
+        follow_up_tokens = [
+            "3rd", "third", "1st", "first", "2nd", "second", "4th", "fourth", 
+            "one", "it", "this", "that", "about", "describe", "yes", "no",
+            "more", "some more", "top 10", "10", "ten", "list", "other", "others"
+        ]        # Only freeze context if the user didn't explicitly shift the gender or noun slots in this turn
         is_conversational_follow_up = any(token in user_msg_lower for token in follow_up_tokens) and not has_women and not has_men and not any(n in user_msg_lower for n in ["suit", "coat", "jacket", "blazer", "scarf", "saree", "gown"])
     else:
         is_conversational_follow_up = False
@@ -264,6 +267,13 @@ def handle_concierge_chat(payload: ChatRequest):
             )
             SESSION_MEMORY[session_key]["active_gender"] = None
         else:
+            # Force-protect the query execution loop from running a global vector search on conversational noise
+            # pyrefly: ignore [unbound-name]
+            if not current_locked_cat and any(t in user_msg_lower for t in ["more", "less", "other", "10", "top"]):
+                # Look back at your slot tracking to find what they were looking at before the container reset
+                current_locked_cat = SESSION_MEMORY[session_key].get("active_noun")
+                if SESSION_MEMORY[session_key].get("active_gender"):
+                    current_locked_cat = f"{current_locked_cat} - {SESSION_MEMORY[session_key]['active_gender']}"
             try:
                 query_vector = get_gemini_embedding(user_input)
                 conn = get_db_connection()
