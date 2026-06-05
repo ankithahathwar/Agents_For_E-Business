@@ -145,8 +145,46 @@ def process_showroom_order_commit(payload: OrderPayload):
 # =====================================================================
 # ROUTE 3: MASTER UNION CONCIERGE ASSISTANT LAYER (Marco) - HARDENED
 # =====================================================================
+def classify_user_intent(user_message: str) -> str:
+    """Evaluates whether the incoming text belongs in our retail store or is completely off-topic."""
+    router_instruction = (
+        "You are the absolute front-door traffic router for 'Agent Boutique'. "
+        "Your sole task is to classify the user's input message into one of two strict categories:\n"
+        "1. SHOPPING - If the user is greeting you, asking about clothes, suits, fabrics, linings, ordering items, or requesting fashion curation.\n"
+        "2. OFF_TOPIC - If the user is asking about general knowledge, music, celebrities, history, science, math, school homework, coding scripts, or any topic outside a clothing store catalog.\n\n"
+        "CRITICAL: You must output EXACTLY one word: either 'SHOPPING' or 'OFF_TOPIC'. Do not include periods, spaces, prefaces, or explanations."
+    )
+    
+    try:
+        response = groq_client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {"role": "system", "content": router_instruction},
+                {"role": "user", "content": user_message}
+            ],
+            temperature=0.0,
+            max_tokens=5 # Hard ceiling so it can't blabber
+        )
+        # pyrefly: ignore [missing-attribute]
+        return response.choices[0].message.content.strip().upper()
+    except Exception:
+        # Safe fallback: if the router fails, assume shopping to let the conversation try to continue
+        return "SHOPPING"
+
+
 @app.post("/api/chat")
 def handle_concierge_chat(payload: ChatRequest):
+    user_input = payload.user_message
+    
+    # 🛑 THE FIREWALL GATEKEEPER CHECK:
+    intent = classify_user_intent(user_input)
+    if "OFF_TOPIC" in intent:
+        # Shut down the execution pipeline immediately!
+        # No DB calls, no embeddings, zero history pollution.
+        return {
+            "reply": "I am here exclusively as your personal stylist at Agent Boutique. Let's return to designing your premium apparel layers. What category can I help you map out today?"
+        }
+        
     session_key = payload.session_id
     
     # 1. Initialize session memory safely
@@ -157,11 +195,16 @@ def handle_concierge_chat(payload: ChatRequest):
             "last_context_string": ""
         }
     
-    user_input = payload.user_message
     user_msg_lower = user_input.lower().replace("'", "").replace("-", " ")
     
-    # Isolated gender routing validation
-    if "women" in user_msg_lower or "lady" in user_msg_lower or "leaves" in user_msg_lower or "woman" in user_msg_lower:
+    # ✨ Mixed gender extraction engine (Prevents keyword collision loops)
+    has_both = "both" in user_msg_lower or ("men" in user_msg_lower and "women" in user_msg_lower)
+    
+    if has_both:
+        has_men = False
+        has_women = False
+        SESSION_MEMORY[session_key]["active_category"] = None  # Clears lock for a global search
+    elif "women" in user_msg_lower or "lady" in user_msg_lower or "ladies" in user_msg_lower or "woman" in user_msg_lower:
         has_women = True
         has_men = False
     elif "men" in user_msg_lower or "man" in user_msg_lower or "guy" in user_msg_lower or "gentlem" in user_msg_lower:
@@ -175,7 +218,10 @@ def handle_concierge_chat(payload: ChatRequest):
     detected_category = None
 
     if "suit" in user_msg_lower:
-        detected_category = "Suits - Women" if has_women else ("Suits - Men" if has_men else (fallback_cat if fallback_cat and "Suits" in fallback_cat else "Suits - Men"))
+        if has_both:
+            detected_category = None 
+        else:
+            detected_category = "Suits - Women" if has_women else ("Suits - Men" if has_men else (fallback_cat if fallback_cat and "Suits" in fallback_cat else "Suits - Men"))
     elif "coat" in user_msg_lower or "jacket" in user_msg_lower or "blazer" in user_msg_lower:
         detected_category = "Coats - Women" if has_women else ("Coats - Men" if has_men else (fallback_cat if fallback_cat and "Coats" in fallback_cat else "Coats - Men"))
     elif "scarf" in user_msg_lower or "scarves" in user_msg_lower:
