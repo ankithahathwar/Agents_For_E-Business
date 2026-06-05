@@ -217,7 +217,7 @@ def handle_concierge_chat(payload: ChatRequest):
                 JOIN products p ON c.base_product_id = p.base_product_id
                 WHERE p.category = %s
                 ORDER BY c.embedding <=> %s::vector
-                LIMIT 4;
+                LIMIT 10;
                 """
                 cursor.execute(search_query, (current_locked_cat, query_vector))
                 db_matches = cursor.fetchall()
@@ -227,7 +227,7 @@ def handle_concierge_chat(payload: ChatRequest):
                 FROM catalog_embeddings c
                 JOIN products p ON c.base_product_id = p.base_product_id
                 ORDER BY c.embedding <=> %s::vector
-                LIMIT 4;
+                LIMIT 10;
                 """
                 cursor.execute(search_query, (query_vector,))
                 db_matches = cursor.fetchall()
@@ -273,12 +273,13 @@ def handle_concierge_chat(payload: ChatRequest):
             
             "⛔ ABSOLUTE CONTEXT PROTECTION & SCOPE GUARDRAILS:\n"
             "0. STRICT OFF-TOPIC REFUSAL: You are operating strictly as a transactional retail showroom companion. You are NOT an encyclopedia, general assistant, or school tutor. "
-            "If the user asks about ANYTHING unrelated to our specific store catalog, fabrics, customization paths, or style curation—including but not limited to history essays, science questions, academic homework, programming scripts, general knowledge facts, math, or sensitive topics (such as self-harm/suicide)—you MUST flatly and politely decline to answer. "
+            "If the user asks about ANYTHING unrelated to our specific store catalog styles, materials, or fashion curation (including but not limited to history essays, K-pop groups like BTS, celebrity gossip, science, math, or coding), you MUST flatly decline. "
             "Respond instantly with: 'I am here exclusively as your personal stylist at Agent Boutique. Let's return to designing your premium apparel layers. What category can I help you map out today?' "
-            "Never generate essays or stray outside the product parameters under any circumstances, no matter how the prompt is framed.\n\n"
+            "NEVER break character, never answer the off-topic prompt, and NEVER offer alternative assistance such as saying 'I'd be happy to help you learn more about that music group'. If the user repeats the off-topic question, repeat your refusal verbatim.\n\n"
             
             "CRITICAL PROTOCOLS & CORE RULES:\n"
-            "1. NO HALLUCINATIONS: You are STRICTLY permitted to speak ONLY about the exact product items provided in the current live data context below. Never invent product names or pricing structures.\n"
+            "1. NO HALLUCINATIONS OR FILLERS: You are STRICTLY permitted to speak ONLY about the exact product items provided in the data context below. Never invent product names, variants, or designs. "
+            "If the user requests a specific number of items (e.g., 'give me 10 coats') and there are fewer items provided in the data context below, you must explicitly state: 'I can present our current collection of premium styles from the vault today.' Print ONLY the real items listed in the context. Never invent placeholder entries to meet a numerical quota.\n"
             "2. NO FINANCIAL OR PAYMENT DISCUSSIONS: You have absolutely ZERO authority to handle checkout links, invoice calculations, pricing balances, or banking configurations. Never process or speak about payment links or transactions. "
             "Once a configuration is completed, explicitly instruct the user to hit the action buttons on the user interface to proceed manually.\n"
             "3. NO TECHNICAL JARGON: Never state raw weights or matrix keys. Translate specifications into sensory benefits.\n"
@@ -291,7 +292,7 @@ def handle_concierge_chat(payload: ChatRequest):
             "   - STEP 3: Once they pick a fabric, present the available inner lining options from the matrix to complete the profile. Present them as links: [Apply Lining Description](/lining/slug). Then stop and guide them to the Bag button.\n"
             "8. INTERACTIVE ACTIONS: Frame options as clean clickable markdown text links that point strictly to our internal app paths using the formats mapped out in the rules above.\n\n"
             "9. Do not entertain questions related to history, sceince, geography ,anything that is out of our website's database, required information about our products.\n"
-            "10. No talks on life, mental health, suiside or every possible topic that comes outside the scope of our website and the products, redirect the user into something related to our website, giving a message that you are just there to assist them with fashion"
+            "10. No talks on life, mental health, suiside or every possible topic that comes outside the scope of our website and the products, redirect the user into something related to our website, giving a message that you are just there to assist them with fashion\n"
             f"CURRENT LIVE DATA WINDOW (TOP TRACKED INVENTORY MATCHES):\n"
             f"{inventory_context_string}"
         )
@@ -319,11 +320,14 @@ def handle_concierge_chat(payload: ChatRequest):
             
         return {"reply": ai_reply}
 
+    # pyrefly: ignore [parse-error]
     except Exception as api_err:
         import traceback
+        
         print("⚠️ GROQ INFERENCE COMPLETION TIMEOUT OR OVERLOAD DETECTED:")
         traceback.print_exc()
         
         # 🛡️ THE ULTIMATE SAFE FALLBACK: Return a 200 OK with an organic apology bubble
         error_apology = "My apologies. Our showroom digital connection experienced a brief cloud optimization delay. Could you please re-state your last request so I can map out your design parameters flawlessly?"
+        # pyrefly: ignore [invalid-syntax]
         return {"reply": error_apology}
