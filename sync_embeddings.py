@@ -26,7 +26,7 @@ def get_gemini_embedding(text: str):
     return response.embeddings[0].values
 
 def fix_vector_desync():
-    print("🔄 Connecting to Neon PostgreSQL instance...")
+    print("[*] Connecting to Neon PostgreSQL instance...")
     conn = get_db_connection()
     cursor = conn.cursor()
     
@@ -34,7 +34,7 @@ def fix_vector_desync():
     cursor.execute("SELECT base_product_id FROM catalog_embeddings;")
     # pyrefly: ignore [bad-index]
     existing_vectors = {row["base_product_id"] for row in cursor.fetchall()}
-    print(f"📊 Found {len(existing_vectors)} items with active embeddings.")
+    print(f"[DB] Found {len(existing_vectors)} items with active embeddings.")
     
     # 2. Fetch all raw products from the main inventory catalog
     cursor.execute("SELECT base_product_id, name, category, description, customization_matrix FROM products;")
@@ -45,12 +45,12 @@ def fix_vector_desync():
     missing_products = [p for p in all_products if p["base_product_id"] not in existing_vectors]
     
     if not missing_products:
-        print("✅ Excellent! Your vector database is 100% in sync with your product catalog.")
+        print("[OK] Excellent! Your vector database is 100% in sync with your product catalog.")
         cursor.close()
         conn.close()
         return
 
-    print(f"⚠️ Detected {len(missing_products)} missing vectors. Initializing embedding generation pipelines...")
+    print(f"[WARN] Detected {len(missing_products)} missing vectors. Initializing embedding generation pipelines...")
     
     # 4. Generate chunks and push embeddings to PostgreSQL
     for index, product in enumerate(missing_products, 1):
@@ -81,11 +81,11 @@ def fix_vector_desync():
             conn.commit() # Commit transaction-by-transaction to protect partial runs
             
         except Exception as e:
-            print(f"❌ Failed to embed item {prod_id}: {str(e)}")
+            print(f"[FAIL] Failed to embed item {prod_id}: {str(e)}")
             conn.rollback()
             continue
 
-    print("\n🚀 Migration Complete! All scarves and missing catalog entries are fully vectorized.")
+    print("\n[DONE] Migration Complete! All fabric and missing catalog entries are fully vectorized.")
     cursor.close()
     conn.close()
 
