@@ -236,7 +236,18 @@ def handle_concierge_chat(payload: ChatRequest):
     else:
         is_conversational_follow_up = False
 
-    # 🔄 3. CONVERSATIONAL PIPELINE ROUTING
+  # 🔄 3. CONVERSATIONAL PIPELINE ROUTING
+    # ✨ QUALITY FIX: Exclude "more" and "option" from freezing context, so requests for more choices hit the DB
+    has_cached_context = SESSION_MEMORY[session_key]["last_context_string"] != ""
+    if has_cached_context:
+        follow_up_tokens = [
+            "3rd", "third", "1st", "first", "2nd", "second", "4th", "fourth", 
+            "one", "it", "this", "that", "about", "describe", "yes", "no", "ten"
+        ]
+        is_conversational_follow_up = any(token in user_msg_lower for token in follow_up_tokens) and not has_women and not has_men and not any(n in user_msg_lower for n in ["suit", "coat", "jacket", "blazer", "scarf", "saree", "gown", "fabric", "material", "more", "option", "options"])
+    else:
+        is_conversational_follow_up = False
+
     if is_conversational_follow_up:
         inventory_context_string = SESSION_MEMORY[session_key]["last_context_string"]
     else:
@@ -244,10 +255,14 @@ def handle_concierge_chat(payload: ChatRequest):
         detected_category = None
         
         if current_noun:
-            if current_noun in ["Gowns", "Sarees", "Bespoke Fabrics"]:
+            if current_noun in ["Gowns", "Sarees"]:
                 detected_category = current_noun
+            elif current_noun == "Bespoke Fabrics":
+                # ✨ QUALITY FIX: Set to None! This forces fabrics to bypass strict category matching 
+                # and lets the raw vector similarity search pull dynamically from across all fabric types.
+                detected_category = None 
             elif current_gender == "Both":
-                detected_category = None # Triggers global multi-pull
+                detected_category = None
             elif current_gender in ["Men", "Women"]:
                 detected_category = f"{current_noun} - {current_gender}"
             else:
@@ -265,13 +280,12 @@ def handle_concierge_chat(payload: ChatRequest):
             )
             SESSION_MEMORY[session_key]["active_gender"] = None
         else:
-            # ✨ FIXED: Protect the query tracking loop using the unified `detected_category` variable
             if not detected_category and any(t in user_msg_lower for t in ["more", "less", "other", "10", "top"]):
                 current_noun = SESSION_MEMORY[session_key].get("active_noun")
                 current_gender = SESSION_MEMORY[session_key].get("active_gender")
-                if current_noun in ["Gowns", "Sarees", "Bespoke Fabrics"]:
+                if current_noun in ["Gowns", "Sarees"]:
                     detected_category = current_noun
-                elif current_noun and current_gender:
+                elif current_noun and current_gender and current_noun != "Bespoke Fabrics":
                     detected_category = f"{current_noun} - {current_gender}"
 
             try:
@@ -292,6 +306,7 @@ def handle_concierge_chat(payload: ChatRequest):
                     cursor.execute(search_query, (detected_category, query_vector))
                     db_matches = cursor.fetchall()
                 else:
+                    # ✨ This un-filtered vector path will execute for fabrics and surface real items naturally
                     search_query = """
                     SELECT p.base_product_id, p.name, p.category, p.description, p.customization_matrix
                     FROM catalog_embeddings c
@@ -305,7 +320,6 @@ def handle_concierge_chat(payload: ChatRequest):
                 cursor.close()
                 conn.close()
                 
-                # ✨ FIXED: Stripped out the hardcoded branch. Fabrics now loop out of the DB natively!
                 inventory_context_string = ""
                 if not db_matches:
                     inventory_context_string = "No active products matching this specification sheet are currently loaded."
