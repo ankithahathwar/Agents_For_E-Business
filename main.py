@@ -178,7 +178,7 @@ def handle_concierge_chat(payload: ChatRequest):
     
     # 🛑 1. FIREWALL GATEKEEPER CHECK
     intent = classify_user_intent(user_input)
-    if "OFF_TOPIC" in intent:
+    if "OFF_TOP_IC" in intent or "OFF_TOPIC" in intent:
         return {
             "reply": "I am here exclusively as your personal stylist at Agent Boutique. Let's return to designing your premium apparel layers. What category can I help you map out today?"
         }
@@ -224,15 +224,15 @@ def handle_concierge_chat(payload: ChatRequest):
     inventory_context_string = ""
     is_ambiguous_turn = False
 
-    # Context Persistence Check for Sequential Follow-ups (numbers, descriptions)
+    # Context Persistence Check for Sequential Follow-ups
     has_cached_context = SESSION_MEMORY[session_key]["last_context_string"] != ""
     if has_cached_context:
         follow_up_tokens = [
             "3rd", "third", "1st", "first", "2nd", "second", "4th", "fourth", 
             "one", "it", "this", "that", "about", "describe", "yes", "no",
             "more", "some more", "top 10", "10", "ten", "list", "other", "others"
-        ]        # Only freeze context if the user didn't explicitly shift the gender or noun slots in this turn
-        is_conversational_follow_up = any(token in user_msg_lower for token in follow_up_tokens) and not has_women and not has_men and not any(n in user_msg_lower for n in ["suit", "coat", "jacket", "blazer", "scarf", "saree", "gown"])
+        ]
+        is_conversational_follow_up = any(token in user_msg_lower for token in follow_up_tokens) and not has_women and not has_men and not any(n in user_msg_lower for n in ["suit", "coat", "jacket", "blazer", "scarf", "saree", "gown", "fabric", "material"])
     else:
         is_conversational_follow_up = False
 
@@ -251,10 +251,8 @@ def handle_concierge_chat(payload: ChatRequest):
             elif current_gender in ["Men", "Women"]:
                 detected_category = f"{current_noun} - {current_gender}"
             else:
-                # We know the item (e.g. Suits) but gender is still missing
                 is_ambiguous_turn = True
         else:
-            # No item noun has been specified yet in this session
             is_ambiguous_turn = True
 
         # 🗄️ 4. SAFE-FAIL ZONE A: Database & Vector Extraction Layer
@@ -267,13 +265,15 @@ def handle_concierge_chat(payload: ChatRequest):
             )
             SESSION_MEMORY[session_key]["active_gender"] = None
         else:
-            # Force-protect the query execution loop from running a global vector search on conversational noise
-            # pyrefly: ignore [unbound-name]
-            if not current_locked_cat and any(t in user_msg_lower for t in ["more", "less", "other", "10", "top"]):
-                # Look back at your slot tracking to find what they were looking at before the container reset
-                current_locked_cat = SESSION_MEMORY[session_key].get("active_noun")
-                if SESSION_MEMORY[session_key].get("active_gender"):
-                    current_locked_cat = f"{current_locked_cat} - {SESSION_MEMORY[session_key]['active_gender']}"
+            # ✨ FIXED: Protect the query tracking loop using the unified `detected_category` variable
+            if not detected_category and any(t in user_msg_lower for t in ["more", "less", "other", "10", "top"]):
+                current_noun = SESSION_MEMORY[session_key].get("active_noun")
+                current_gender = SESSION_MEMORY[session_key].get("active_gender")
+                if current_noun in ["Gowns", "Sarees", "Bespoke Fabrics"]:
+                    detected_category = current_noun
+                elif current_noun and current_gender:
+                    detected_category = f"{current_noun} - {current_gender}"
+
             try:
                 query_vector = get_gemini_embedding(user_input)
                 conn = get_db_connection()
@@ -305,22 +305,16 @@ def handle_concierge_chat(payload: ChatRequest):
                 cursor.close()
                 conn.close()
                 
+                # ✨ FIXED: Stripped out the hardcoded branch. Fabrics now loop out of the DB natively!
                 inventory_context_string = ""
-                if detected_category == "Bespoke Fabrics":
-                    inventory_context_string = (
-                        "ITEM 1:\nID: fabric_merino_wool\nName: Premium Super 140s Australian Merino Wool\nCategory: Bespoke Fabrics\nDescription: Raw high-grade structural suiting wool yarn sold independently by the linear meter.\n----------------------------------------\n"
-                        "ITEM 2:\nID: fabric_mulberry_silk\nName: Mulberry Silk Filament Blend\nCategory: Bespoke Fabrics\nDescription: Pure high-sheen lightweight traditional dress silk material cuts sold independently by the meter.\n----------------------------------------\n"
-                        "ITEM 3:\nID: fabric_highland_tweed\nName: Highland Premium Tweed Weave\nCategory: Bespoke Fabrics\nDescription: Heavyset richly patterned premium autumn textile segments sold independently by the linear meter.\n----------------------------------------\n"
-                    )
+                if not db_matches:
+                    inventory_context_string = "No active products matching this specification sheet are currently loaded."
                 else:
-                    if not db_matches:
-                        inventory_context_string = "No active products matching this specification sheet are currently loaded."
-                    else:
-                        for index, item in enumerate(db_matches, 1):
-                            inventory_context_string += (
-                                # pyrefly: ignore [bad-index]
-                                f"ITEM {index}:\nID: {item['base_product_id']}\nName: {item['name']}\nCategory: {item['category']}\nDescription: {item['description']}\nMatrix: {json.dumps(item['customization_matrix'])}\n----------------------------------------\n"
-                            )
+                    for index, item in enumerate(db_matches, 1):
+                        inventory_context_string += (
+                            # pyrefly: ignore [bad-index]
+                            f"ITEM {index}:\nID: {item['base_product_id']}\nName: {item['name']}\nCategory: {item['category']}\nDescription: {item['description']}\nMatrix: {json.dumps(item['customization_matrix'])}\n----------------------------------------\n"
+                        )
                 
                 SESSION_MEMORY[session_key]["last_context_string"] = inventory_context_string
                 
