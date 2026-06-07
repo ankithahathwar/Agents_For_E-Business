@@ -518,6 +518,57 @@ body {
 }
 
 /* =====================================================================
+   🧵 BESPOKE FABRIC VAULT PRODUCT CARDS
+   ===================================================================== */
+.fabric-vault-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+.fabric-product-card {
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.fabric-product-card:hover {
+  border-color: #404040;
+}
+
+.fabric-product-card.fabric-highlighted {
+  border-color: var(--accent-gold);
+  box-shadow: 0 0 0 2px rgba(197, 168, 128, 0.25), 0 0 24px rgba(197, 168, 128, 0.12);
+  animation: fabricHighlightPulse 1.8s ease-out forwards;
+}
+
+@keyframes fabricHighlightPulse {
+  0%   { box-shadow: 0 0 0 5px rgba(197, 168, 128, 0.55); }
+  100% { box-shadow: 0 0 0 2px rgba(197, 168, 128, 0.25), 0 0 24px rgba(197, 168, 128, 0.12); }
+}
+
+.fabric-product-img {
+  width: 100%;
+  height: 200px;
+  object-fit: cover;
+  display: block;
+}
+
+.fabric-card-body {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+
+/* =====================================================================
    💬 PERSISTENT CONCIERGE MARCO SIDEBAR LAYOUT
    ===================================================================== */
 .assistant-sidebar-pane {

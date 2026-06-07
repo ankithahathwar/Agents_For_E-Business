@@ -1,0 +1,27 @@
+# Git
+.git/
+.gitignore
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+build/
+npm-debug.log
+
+# Environment variables (CRITICAL: Do not copy secrets into the image)
+.env
+.env.local
+
+# IDEs and System
+.vscode/
+.idea/
+.DS_Store
+.gemini/

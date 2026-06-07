@@ -100,7 +100,7 @@ def get_all_products():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT base_product_id, name, category, description, customization_matrix FROM products;")
+        cursor.execute("SELECT base_product_id, name, category, description, customization_matrix, image_url FROM products;")
         products = cursor.fetchall()
         cursor.close()
         conn.close()
@@ -209,13 +209,29 @@ def handle_concierge_chat(payload: ChatRequest):
     elif has_men:
         SESSION_MEMORY[session_key]["active_gender"] = "Men"
 
-    # Update Noun Slot memory if detected
-    if "suit" in user_msg_lower: SESSION_MEMORY[session_key]["active_noun"] = "Suits"
-    elif any(c in user_msg_lower for c in ["coat", "jacket", "blazer"]): SESSION_MEMORY[session_key]["active_noun"] = "Coats"
-    elif any(s in user_msg_lower for s in ["scarf", "scarves"]): SESSION_MEMORY[session_key]["active_noun"] = "Scarfs"
-    elif "gown" in user_msg_lower: SESSION_MEMORY[session_key]["active_noun"] = "Gowns"
-    elif "saree" in user_msg_lower or "sari" in user_msg_lower: SESSION_MEMORY[session_key]["active_noun"] = "Sarees"
-    elif any(f in user_msg_lower for f in ["fabric", "material", "swatch"]): SESSION_MEMORY[session_key]["active_noun"] = "Bespoke Fabrics"
+    # Also track whether a gender-split noun was explicitly mentioned THIS turn
+    gender_split_noun_this_turn = False
+    if "suit" in user_msg_lower:
+        SESSION_MEMORY[session_key]["active_noun"] = "Suits"
+        gender_split_noun_this_turn = True
+    elif any(c in user_msg_lower for c in ["coat", "jacket", "blazer"]):
+        SESSION_MEMORY[session_key]["active_noun"] = "Coats"
+        gender_split_noun_this_turn = True
+    elif any(s in user_msg_lower for s in ["scarf", "scarves"]):
+        SESSION_MEMORY[session_key]["active_noun"] = "Scarfs"
+        gender_split_noun_this_turn = True
+    elif "gown" in user_msg_lower:
+        SESSION_MEMORY[session_key]["active_noun"] = "Gowns"
+    elif "saree" in user_msg_lower or "sari" in user_msg_lower:
+        SESSION_MEMORY[session_key]["active_noun"] = "Sarees"
+    elif any(f in user_msg_lower for f in ["fabric", "material", "swatch"]):
+        SESSION_MEMORY[session_key]["active_noun"] = "Bespoke Fabrics"
+
+    # KEY FIX: Gender slot bleed prevention.
+    # If the user is explicitly requesting a NEW gender-split category (suits/coats/scarves)
+    # in this message but has NOT mentioned any gender keyword, clear the cached gender.
+    if gender_split_noun_this_turn and not has_men and not has_women and not has_both:
+        SESSION_MEMORY[session_key]["active_gender"] = None
 
     # Pull current resolved states from long-term memory
     current_noun = SESSION_MEMORY[session_key]["active_noun"]
@@ -338,6 +354,22 @@ def handle_concierge_chat(payload: ChatRequest):
                 traceback.print_exc()
                 inventory_context_string = SESSION_MEMORY[session_key]["last_context_string"] or "Showroom catalog connection is running slowly."
 
+    # GUARANTEED CLARIFICATION BYPASS: For ambiguous gender queries, return directly from Python.
+    # The LLM (llama-3.1-8b) can hallucinate products when it has long conversation history,
+    # ignoring the CRITICAL ERROR CONTEXT instruction. A direct Python return is 100% reliable.
+    if is_ambiguous_turn:
+        noun_display = current_noun.lower() if current_noun else "apparel"
+        clarification_reply = (
+            f"Certainly! Before I curate the right selection for you, may I ask \u2014 "
+            f"are you looking for our Men\u2019s or Women\u2019s {noun_display}? "
+            f"We carry both collections in our vault and I want to make sure I present exactly the right range for you."
+        )
+        SESSION_MEMORY[session_key]["messages"].append({"role": "user", "content": user_input})
+        SESSION_MEMORY[session_key]["messages"].append({"role": "assistant", "content": clarification_reply})
+        if len(SESSION_MEMORY[session_key]["messages"]) > 8:
+            SESSION_MEMORY[session_key]["messages"] = SESSION_MEMORY[session_key]["messages"][-8:]
+        return {"reply": clarification_reply}
+
     # 5. SAFE-FAIL ZONE B: Large Language Model Inference Completion Layer
     try:
         system_instruction = (
@@ -358,7 +390,7 @@ def handle_concierge_chat(payload: ChatRequest):
             "3. NO TECHNICAL JARGON: Never state raw weights or matrix keys. Translate specifications into sensory benefits.\n"
             "4. FORMATTING CLEANLINESS: Never wrap words, titles, options, or selections in double asterisks '**'. Present items using clean, simple line breaks with user-friendly text labels.\n"
             "5. HANDLING GENERIC/BROAD REQUESTS: If the user makes a broad query ('show me some gowns', 'what options are there'), introduce 3 distinct varieties from the context below using clean line breaks with clickable text links using format: [Style Name](/shop/id).\n"
-            "6. SPECIAL PROTOCOL FOR FABRIC VAULT: If the active context contains independent raw materials (Bespoke Fabrics), confirm warmly that we proudly sell premium fabric lengths separately by the meter! Present the raw items using format: [Purchase Material Name](/fabric/vault) and instruct them to use the interactive sizing stepper controls on the grid card to add it to their bag.\n"
+            "6. SPECIAL PROTOCOL FOR FABRIC VAULT: If the active context contains independent raw materials (Bespoke Fabrics), confirm warmly that we proudly sell premium fabric lengths separately by the meter! Present each fabric as a clickable link using the ACTUAL name and ACTUAL ID from the context data. Link format: [THE_REAL_FABRIC_NAME](/fabric/THE_REAL_FABRIC_ID). Concrete example: if the context shows ID=fabric_mongolian_cashmere and Name=Grade-A Mongolian Brushed Cashmere, you write exactly: [Grade-A Mongolian Brushed Cashmere](/fabric/fabric_mongolian_cashmere). IMPORTANT: Always use the real product name from the data as the link text. NEVER write the words 'Fabric Name' or any placeholder as link text. CRITICAL FABRIC RULES: (a) Do NOT ask for a lining choice. (b) After presenting fabrics, ask the customer to confirm their required cut length in meters using the stepper on the fabric card. (c) Once they confirm length, instruct them to click 'Purchase Fabric Segment' to add to bag.\n"
             "7. THE SYSTEMATIC SALES DESIGN PIPELINE FOR APPAREL: Once the customer selects a specific apparel silhouette, lock into that style and proceed step-by-step:\n"
             "   - STEP 1: Acknowledge their selection elegantly and summarize the aesthetic value of that specific cut layout. Do not suggest fabrics or linings yet.\n"
             "   - STEP 2: Once confirmed, suggest exactly 2 compatible fabric choices from that specific item's matrix data using sensory language luxury descriptions. Present them as links: [Apply Fabric Name](/fabric/name-slug).\n"

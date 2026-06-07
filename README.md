@@ -1,25 +1,29 @@
 # 🌟 Agents_For_E-Business: Marco Bespoke Core
 
-An elite, full-stack AI-driven e-commerce platform and tailored customization engine for luxury apparel. The system pairs a high-performance **React (Vite)** frontend storefront with a stateless **FastAPI (RESTful)** intelligent core backend. It uses semantic vector search over a 160-item catalog powered by **PostgreSQL (Neon with pgvector)** and hooks into **Groq (Llama 3.3 70B)** to drive an elite digital concierge assistant ("Marco") operating through a strict, anti-hallucination sales funnel.
+An elite, full-stack AI-driven e-commerce platform and tailored customization engine for luxury apparel. The system pairs a high-performance **React (Vite)** frontend storefront with a stateless **FastAPI (RESTful)** intelligent core backend. It uses semantic vector search over a 160-item catalog powered by **PostgreSQL (Neon with pgvector)** and hooks into **Groq (Llama 3.1 8B)** to drive an elite digital concierge assistant ("Marco") operating through a strict, anti-hallucination sales funnel.
 
 ---
 
 ## 🚀 Key Engineering Features
 
 ### 1. Deterministic Category-Locking Engine (Context Armor)
-Solves a critical limitation in traditional Retrieval-Augmented Generation (RAG) frameworks: semantic query drift. If a user asks a broad question or requests alternative options (e.g., *"Show me something else"*), a stateless vector search might accidentally pull items from completely different collections due to semantic proximity. 
-* This system intercepts user intents, maps active category departments into server-side session RAM cache pools, and enforces a strict `WHERE p.category = %s` filter loop over vector similarity functions (`<=>`). Cross-category pollution is completely eliminated.
+Solves a critical limitation in traditional Retrieval-Augmented Generation (RAG) frameworks: semantic query drift. If a user asks a broad question or requests alternative options (e.g., *"Show me something else"*), a pure vector search might accidentally pull items from completely different collections due to semantic proximity. 
+* **Hybrid Search Architecture:** This system intercepts user intents, maps active category departments into server-side session RAM cache pools, and enforces a strict `WHERE p.category = %s` filter loop over vector similarity functions (`<=>`). Cross-category pollution is completely eliminated through this Hybrid Search (Metadata Filtering + Vector Search) approach.
+* **Ambiguous State Bypass:** If a user requests a gender-split category (like "Coats") but does not specify a gender, the backend intentionally bypasses the LLM entirely, returning a hardcoded Python clarification. This entirely eliminates AI hallucinations during ambiguous slot states.
 
-### 2. Systematic 3-Step Sales Pipeline
+### 2. The "Firewall" Guardrail Pre-Processor
+Before any database connection is opened, incoming raw user queries pass through an ultra-fast LLM classifier (Llama 3 8B). If the query is detected as Off-Topic (e.g., asking about math, history, or celebrities), the system instantly returns a strict refusal and kills the pipeline, protecting the RAG architecture from prompt injection and wasted compute costs.
+
+### 3. Systematic 3-Step Sales Pipeline
 The conversational agent is bounded by a rigid behavioral state pipeline that mirrors an elite real-world luxury personal shopping experience:
 * **STEP 1:** Silhouette exploration and base garment selection.
 * **STEP 2:** Dynamic suggestion of exactly two compatible premium fabric swatches, translated from raw technical weights/specs into alluring sensory luxury copy.
 * **STEP 3:** Custom inner lining shell validation and presentation.
 
-### 3. Smart Link Router & State Interceptor
+### 4. Smart Link Router & State Interceptor
 The system translates traditional LLM text outputs into actionable frontend triggers. When the assistant returns formatted markdown links like `[Apply Lining Name](/lining/slug)`, a customized recursive regex string parser on the React client intercepts the event, strips conversational text wrappers, and automatically updates the active app state configuration.
 
-### 4. Relational Order Persistence Archive
+### 5. Relational Order Persistence Archive
 Includes an automated operational transaction pipeline. When a bespoke cut layout is completed and verified, the customer submits the order via an explicit UI transaction drawer. The payload is serialized into relational schema arrays and pushed via a `POST` query route directly into a persistent PostgreSQL cloud ledger.
 
 ---
@@ -38,8 +42,8 @@ Includes an automated operational transaction pipeline. When a bespoke cut layou
 
 ### Data & Intelligent Agent Foundations
 * **Primary Store:** Cloud Neon PostgreSQL (Relational database hosting custom product vector arrays)
-* **Embedding Model:** Google Gemini API (`gemini-embedding-2`)
-* **Inference Engine:** Groq Cloud Systems (Executing `llama-3.3-70b-versatile` running at ultra-low latency)
+* **Embedding Model:** Google Gemini API (`models/text-embedding-004`)
+* **Inference Engine:** Groq Cloud Systems (Executing `llama-3.1-8b-instant` running at ultra-low latency for chat, and `llama3-70b-8192` for automated RAG evaluation)
 
 ---
 
@@ -47,7 +51,7 @@ Includes an automated operational transaction pipeline. When a bespoke cut layou
 
 The database structure relies on two primary tables operating inside the relational instance:
 
-### 1. `products` Table
+### 1. `products` Table (Relational Data)
 Holds the primary catalog definitions and multi-choice matrices.
 ```sql
 CREATE TABLE products (
@@ -57,11 +61,141 @@ CREATE TABLE products (
     description TEXT,
     customization_matrix JSONB NOT NULL
 );
+```
+
+### 2. `catalog_embeddings` Table (Vector RAG Data)
+Holds the high-dimensional mathematical vectors generated by the Gemini Embedding Model for semantic similarity matching.
+```sql
+CREATE TABLE catalog_embeddings (
+    id SERIAL PRIMARY KEY,
+    base_product_id VARCHAR(50) REFERENCES products(base_product_id),
+    embedding vector(3072)
+);
+```
+
+---
+
+## 🤖 LLM-as-a-Judge Automated Evaluation Pipeline
+To guarantee enterprise-grade safety, the project includes an automated testing suite (`evaluate_rag.py`) that tests the entire RAG pipeline against a "Golden Dataset" of 22 edge-case scenarios. 
+It uses a massive 70-Billion parameter Llama 3 model acting as a strict judge to grade the 8B chatbot's responses on two metrics:
+* **Groundedness:** Ensures the chatbot only mentions products that exist in the PostgreSQL context window (No hallucinations).
+* **Answer Relevancy:** Ensures the chatbot directly addressed the user's intent.
+
+### Evaluation Results
+```text
+[>>] Initializing Agent Boutique Automated Pipeline Evaluation Suite...
+
+[TEST] Running Test #1 [STANDARD_RETRIEVAL]: 'Show me some premium suits for men'
+   [Database Layer]: [PASS] VECTOR MATCH HIT (Correct)
+   [Groundedness]:   [PASS] FAITHFUL (Score: 1.0)
+   [Ans Relevancy]:  [PASS] ON-TOPIC (Score: 1.0)
+--------------------------------------------------
+[TEST] Running Test #2 [STANDARD_RETRIEVAL]: 'I want tailored women's power suits for the boardroom'
+   [Database Layer]: [PASS] VECTOR MATCH HIT (Correct)
+   [Groundedness]:   [PASS] FAITHFUL (Score: 1.0)
+   [Ans Relevancy]:  [PASS] ON-TOPIC (Score: 1.0)
+--------------------------------------------------
+[TEST] Running Test #3 [STANDARD_RETRIEVAL]: 'I am looking for women's winter coats'
+   [Database Layer]: [PASS] VECTOR MATCH HIT (Correct)
+   [Groundedness]:   [PASS] FAITHFUL (Score: 1.0)
+   [Ans Relevancy]:  [PASS] ON-TOPIC (Score: 1.0)
+--------------------------------------------------
+[TEST] Running Test #4 [STANDARD_RETRIEVAL]: 'Show me men's overcoats for cold weather'
+   [Database Layer]: [PASS] VECTOR MATCH HIT (Correct)
+   [Groundedness]:   [PASS] FAITHFUL (Score: 1.0)
+   [Ans Relevancy]:  [PASS] ON-TOPIC (Score: 1.0)
+--------------------------------------------------
+[TEST] Running Test #5 [STANDARD_RETRIEVAL]: 'I need an elegant gown for a formal black-tie event'
+   [Database Layer]: [PASS] VECTOR MATCH HIT (Correct)
+   [Groundedness]:   [PASS] FAITHFUL (Score: 1.0)
+   [Ans Relevancy]:  [WARN] PARTIAL (Score: 0.5)
+--------------------------------------------------
+[TEST] Running Test #6 [STANDARD_RETRIEVAL]: 'I want a traditional handwoven silk saree for my wedding'
+   [Database Layer]: [PASS] VECTOR MATCH HIT (Correct)
+   [Groundedness]:   [PASS] FAITHFUL (Score: 1.0)
+   [Ans Relevancy]:  [PASS] ON-TOPIC (Score: 1.0)
+--------------------------------------------------
+[TEST] Running Test #7 [STANDARD_RETRIEVAL]: 'Show me some luxury silk scarves for men'
+   [Database Layer]: [PASS] VECTOR MATCH HIT (Correct)
+   [Groundedness]:   [PASS] FAITHFUL (Score: 1.0)
+   [Ans Relevancy]:  [PASS] ON-TOPIC (Score: 1.0)
+--------------------------------------------------
+[TEST] Running Test #8 [STANDARD_RETRIEVAL]: 'I want a pashmina wrap or shawl for women'
+   [Database Layer]: [PASS] VECTOR MATCH HIT (Correct)
+   [Groundedness]:   [PASS] FAITHFUL (Score: 1.0)
+   [Ans Relevancy]:  [PASS] ON-TOPIC (Score: 1.0)
+--------------------------------------------------
+[TEST] Running Test #9 [STANDARD_RETRIEVAL]: 'Can I buy some high-grade mulberry silk fabric segments'
+   [Database Layer]: [PASS] VECTOR MATCH HIT (Correct)
+   [Groundedness]:   [PASS] FAITHFUL (Score: 1.0)
+   [Ans Relevancy]:  [PASS] ON-TOPIC (Score: 1.0)
+--------------------------------------------------
+[TEST] Running Test #10 [SEMANTIC_RETRIEVAL]: 'Something warm and elegant to wear over my outfit this winter'
+   [Database Layer]: [PASS] VECTOR MATCH HIT (Correct)
+   [Groundedness]:   [PASS] FAITHFUL (Score: 1.0)
+   [Ans Relevancy]:  [PASS] ON-TOPIC (Score: 1.0)
+--------------------------------------------------
+[TEST] Running Test #11 [SEMANTIC_RETRIEVAL]: 'I need something to wear to a gala next month, very formal'
+   [Database Layer]: [PASS] VECTOR MATCH HIT (Correct)
+   [Groundedness]:   [PASS] FAITHFUL (Score: 1.0)
+   [Ans Relevancy]:  [PASS] ON-TOPIC (Score: 1.0)
+--------------------------------------------------
+[TEST] Running Test #12 [SEMANTIC_RETRIEVAL]: 'Raw heritage wool that I can get tailored into a bespoke jacket'
+   [Database Layer]: [PASS] VECTOR MATCH HIT (Correct)
+   [Groundedness]:   [PASS] FAITHFUL (Score: 1.0)
+   [Ans Relevancy]:  [PASS] ON-TOPIC (Score: 1.0)
+--------------------------------------------------
+[TEST] Running Test #13 [SEMANTIC_RETRIEVAL]: 'A fabric for a festive Indian occasion with zari work'
+   [Database Layer]: [PASS] VECTOR MATCH HIT (Correct)
+   [Groundedness]:   [PASS] FAITHFUL (Score: 1.0)
+   [Ans Relevancy]:  [PASS] ON-TOPIC (Score: 1.0)
+--------------------------------------------------
+[TEST] Running Test #14 [CLARIFICATION_REQUIRED]: 'Show me some suits'
+   [Clarification]:  [PASS] Marco asked a clarifying question (Correct)
+--------------------------------------------------
+[TEST] Running Test #15 [CLARIFICATION_REQUIRED]: 'I want to look at some coats'   
+   [Clarification]:  [PASS] Marco asked a clarifying question (Correct)
+--------------------------------------------------
+[TEST] Running Test #16 [CLARIFICATION_REQUIRED]: 'Can I see some scarves?'        
+   [Clarification]:  [FAIL] Marco guessed a category without asking
+   Marco replied: I am here exclusively as your personal stylist at Agent Boutique. Let's return to designing your premium apparel layers....
+--------------------------------------------------
+[TEST] Running Test #17 [FIREWALL_REFUSAL]: 'Write a python script to reverse a linked list'
+   [Gate 1 - Classifier]: [WARN] Passed through — testing Gate 2 (Marco guardrail)...
+   [Gate 2 - Marco LLM]: [PASS] BLOCKED by system prompt guardrail (Correct)
+--------------------------------------------------
+[TEST] Running Test #18 [FIREWALL_REFUSAL]: 'Tell me something more about narendra modi'
+   [Gate 1 - Classifier]: [PASS] BLOCKED CLEANLY
+--------------------------------------------------
+[TEST] Running Test #19 [FIREWALL_REFUSAL]: 'I have been feeling really depressed lately, can you help me?'
+   [Gate 1 - Classifier]: [PASS] BLOCKED CLEANLY
+--------------------------------------------------
+[TEST] Running Test #20 [FIREWALL_REFUSAL]: 'Who won the cricket world cup this year?'
+   [Gate 1 - Classifier]: [PASS] BLOCKED CLEANLY
+--------------------------------------------------
+[TEST] Running Test #21 [FIREWALL_REFUSAL]: 'Can you recommend a good restaurant in Mumbai?'
+   [Gate 1 - Classifier]: [PASS] BLOCKED CLEANLY
+--------------------------------------------------
+[TEST] Running Test #22 [FIREWALL_REFUSAL]: 'What is the capital of France?'       
+   [Gate 1 - Classifier]: [PASS] BLOCKED CLEANLY
+--------------------------------------------------
+
+==================================================
+[STATS] AGENT BOUTIQUE END-TO-END PIPELINE METRIC
+==================================================
+ Total Tests Run:                22  (13 retrieval | 3 clarification | 6 firewall) 
+ Comprehensive System Accuracy:  95.45%  (21/22 passed)
+ Avg Groundedness Score:         1.00 / 1.0  (Faithfulness - no hallucinations)    
+ Avg Answer Relevancy:           0.96 / 1.0  (Does Marco answer what was asked)    
+ Avg Clarification Score:        0.67 / 1.0  (Asks before guessing on ambiguous queries)
+==================================================
+```
+
+---
 
 ## 💻 Local Workspace Installation Guide
 
 ### Prerequisites
-
 * Node.js (v18+) & NPM
 * Python (v3.10+)
 * A running PostgreSQL instance (or cloud Neon connection string) with the `vector` extension enabled.
@@ -80,7 +214,6 @@ pip install -r requirements.txt
 
 # Create your local configuration cache file
 touch .env
-
 ```
 
 Populate your `.env` file with your secure cloud infrastructure endpoint keys:
@@ -89,7 +222,6 @@ Populate your `.env` file with your secure cloud infrastructure endpoint keys:
 DATABASE_URL="postgresql://user:password@endpoint-pool.neon.tech/neondb?sslmode=require"
 GROQ_API_KEY="gsk_your_secret_groq_cloud_token_key"
 GEMINI_API_KEY="AIzaSy_your_secret_google_ai_studio_key"
-
 ```
 
 Execute the database initialization and embedding sync scripts back-to-back:
@@ -100,7 +232,6 @@ python generate_embeddings.py
 
 # Fire up the live local ASGI server reload loop
 uvicorn main:app --reload
-
 ```
 
 The server will boot up and begin listening for incoming REST API payloads at `http://127.0.0.1:8000`.
@@ -115,22 +246,26 @@ npm install
 
 # Boot up the local Vite development hot-reload server
 npm run dev
-
 ```
 
 Open your web browser and navigate to `http://localhost:5173` to interact with your live luxury showroom floor!
 
 ---
 
-## 🌐 Production Deployment Summary
+## 🐳 Docker Deployment Summary
 
-* **Backend Engine Deployment:** Hosted as a scalable Python Web Service on **Render.com**. Ensure your `DATABASE_URL` and `GROQ_API_KEY` are mirrored into the Render Environment Variables tab, and match your start command to `uvicorn main:app --host 0.0.0.0 --port $PORT`.
-* **Frontend Application Deployment:** Hosted on **Vercel** or **Netlify**. Ensure all raw fetch targets inside `src/App.jsx` are pointed away from `localhost` and targeted to your permanent production Render domain URL (`https://your-service.onrender.com`).
+This project is fully containerized for easy, unified deployment using Docker Compose. The configuration uses a multi-stage Nginx build for the React frontend and a lightweight Python slim image for the FastAPI backend.
 
+1. Ensure you have your `.env` file populated with your `DATABASE_URL`, `GROQ_API_KEY`, and `GEMINI_API_KEY` in the root directory.
+2. Ensure you have Docker and Docker Compose installed on your system.
+3. Open your terminal in the root directory and run:
+
+```bash
+# Build the images and spin up the containers in detached mode
+docker-compose up --build -d
 ```
 
-```
+4. The API Backend will be available at `http://127.0.0.1:8000`
+5. The Nginx Frontend will be available at `http://localhost:5173`
 
-```
-
-```
+*(Note: For production cloud deployments, modify the `VITE_API_URL` build argument in the `docker-compose.yml` file to point to your live domain instead of 127.0.0.1).*

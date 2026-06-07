@@ -5,10 +5,8 @@ import './App.css';
 // 🌐 GLOBAL FULL-STACK ROUTING CONFIGURATION
 // =====================================================================
 // STEP 1: Paste your live Render URL here (Make sure there is NO trailing slash at the end!)
-const API_BASE = "https://agents-for-e-business.onrender.com";
-
-// (For local testing later, you can just comment out the line above and uncomment this line:)
-// const API_BASE = "http://127.0.0.1:8000";
+// By default, the Docker compose file will inject http://127.0.0.1:8000 here at build time.
+const API_BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
 function App() {
   // Website Core States
@@ -20,6 +18,7 @@ function App() {
   // Customization Configuration States for Active View
   const [activeFabric, setActiveFabric] = useState(null);
   const [activeLining, setActiveLining] = useState(null);
+  const [highlightedFabricId, setHighlightedFabricId] = useState(null);
 
   // Advanced Cart State Engine
   const [cart, setCart] = useState([]);
@@ -102,16 +101,27 @@ function App() {
       return;
     }
 
-    // Context Action B: Intercept fabric configuration change commands
+    // Context Action B: Intercept fabric navigation commands
     if (cleanTarget.includes('fabric')) {
+      // Detect standalone fabric product deep-link e.g. /fabric/fabric_mongolian_cashmere
+      const standaloneMatch = cleanTarget.match(/\/fabric\/(fabric_[a-z0-9_]+)/);
+      if (standaloneMatch) {
+        setFilteredCategory('Bespoke Fabrics');
+        setHighlightedFabricId(standaloneMatch[1]);
+        setSelectedProductId(null);
+        return;
+      }
+      // Apply fabric option to the currently selected garment
       if (selectedProductId) {
         const product = catalog.find(p => p.base_product_id === selectedProductId);
         const matrix = parseMatrix(product?.customization_matrix);
-        const match = matrix.fabrics?.find(f => textLabel.includes(f.name) || f.name.toLowerCase().includes(cleanLabel));
-        if (match) setActiveFabric(match);
-      } else {
-        setFilteredCategory('Bespoke Fabrics');
+        const fabricMatch = matrix.fabrics?.find(f => textLabel.includes(f.name) || f.name.toLowerCase().includes(cleanLabel));
+        if (fabricMatch) { setActiveFabric(fabricMatch); return; }
       }
+      // Default: go to fabric vault without a specific highlight
+      setFilteredCategory('Bespoke Fabrics');
+      setHighlightedFabricId(null);
+      setSelectedProductId(null);
       return;
     }
 
@@ -224,7 +234,7 @@ function App() {
             length: customLength,
             parentCategory: fabricData.parentCategory,
             quantity: 1,
-            price: `$${(customLength * 45).toFixed(2)}`
+            price: `$${(customLength * (fabricData.price_per_meter || 45)).toFixed(2)}`
           }];
         }
       });
@@ -327,7 +337,7 @@ function App() {
       <div className="showroom-display-pane">
         <header className="showroom-navbar">
           <div className="logo" onClick={() => { setSelectedProductId(null); setFilteredCategory('All'); }}>
-            ✨ MARCO BESPOKE CORE
+            ✨ Agent Boutique
           </div>
 
           <div className="search-bar-shell">
@@ -372,7 +382,7 @@ function App() {
               <button className="back-btn" onClick={() => setSelectedProductId(null)}>← Return to Catalog Grid Floor</button>
 
               <div className="detail-layout">
-                <img src={getImagePlaceholder(selectedProduct.name, selectedProduct.category)} alt={selectedProduct.name} className="detail-img" />
+                <img src={selectedProduct.image_url || getImagePlaceholder(selectedProduct.name, selectedProduct.category)} alt={selectedProduct.name} className="detail-img" />
                 <div className="detail-info">
                   <span className="cat-badge">{selectedProduct.category}</span>
                   <h2>{selectedProduct.name}</h2>
@@ -431,10 +441,23 @@ function App() {
             <div className="fabric-catalog-showcase" style={{ marginTop: 0 }}>
               <h3>🧵 Global Raw Bespoke Material Vault</h3>
               <p className="section-sub-intro">Order raw premium materials independently sorted by custom cut length requirements (Meters):</p>
-              <div className="fabric-swatch-grid">
-                {getGlobalFabricLibrary().map((fabric, idx) => (
-                  <FabricLengthCard key={idx} fabric={fabric} onAddToBag={(length) => handleAddToCart('fabric_only', fabric, length)} />
-                ))}
+              <div className="fabric-vault-grid">
+                {catalog.filter(p => p.category === 'Bespoke Fabrics').map((product) => {
+                  const matrix = parseMatrix(product.customization_matrix);
+                  return (
+                    <FabricProductCard
+                      key={product.base_product_id}
+                      product={product}
+                      matrix={matrix}
+                      isHighlighted={highlightedFabricId === product.base_product_id}
+                      onAddToBag={(length) => handleAddToCart('fabric_only', {
+                        name: product.name,
+                        parentCategory: matrix.use_case || 'Bespoke Fabrics',
+                        price_per_meter: matrix.price_per_meter || 45
+                      }, length)}
+                    />
+                  );
+                })}
               </div>
             </div>
 
@@ -442,8 +465,21 @@ function App() {
 
             <div className="catalog-grid-layout">
               {visibleProducts.map(product => (
-                <div key={product.base_product_id} className="catalog-card" onClick={() => handleProductSelect(product.base_product_id)}>
-                  <div className="img-wrapper"><img src={getImagePlaceholder(product.name, product.category)} alt={product.name} /></div>
+                <div
+                  key={product.base_product_id}
+                  className="catalog-card"
+                  onClick={() => {
+                    if (product.category === 'Bespoke Fabrics') {
+                      // Bespoke Fabrics go to the vault + highlight that card, not the apparel detail view
+                      setFilteredCategory('Bespoke Fabrics');
+                      setHighlightedFabricId(product.base_product_id);
+                      setSelectedProductId(null);
+                    } else {
+                      handleProductSelect(product.base_product_id);
+                    }
+                  }}
+                >
+                  <div className="img-wrapper"><img src={product.image_url || getImagePlaceholder(product.name, product.category)} alt={product.name} /></div>
                   <div className="card-meta">
                     <h3>{product.name}</h3>
                     <span className="category-subtext">{product.category}</span>
@@ -535,30 +571,53 @@ function App() {
   );
 }
 
-function FabricLengthCard({ fabric, onAddToBag }) {
-  const [length, setLength] = useState(3);
+function FabricProductCard({ product, matrix, isHighlighted, onAddToBag }) {
+  const minLength = matrix.min_cut_length_meters || 1;
+  const pricePerMeter = matrix.price_per_meter || 45;
+  const [length, setLength] = useState(minLength);
+  const cardRef = useRef(null);
+
+  useEffect(() => {
+    if (isHighlighted && cardRef.current) {
+      cardRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [isHighlighted]);
+
   return (
-    <div className="fabric-swatch-card" style={{ minHeight: '230px' }}>
-      <div className="fabric-card-header">
-        <div>
-          <h4>{fabric.name}</h4>
-          <small style={{ color: '#3b82f6', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginTop: '4px' }}>{fabric.parentCategory}</small>
+    <div ref={cardRef} className={`fabric-product-card${isHighlighted ? ' fabric-highlighted' : ''}`}>
+      {product.image_url && (
+        <img src={product.image_url} alt={product.name} className="fabric-product-img" />
+      )}
+      <div className="fabric-card-body">
+        <div className="fabric-card-header">
+          <div>
+            <h4>{product.name}</h4>
+            <small style={{ color: '#3b82f6', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginTop: '4px' }}>
+              {matrix.use_case || 'Premium Bespoke Fabric'}
+            </small>
+          </div>
+          {matrix.weight_gsm && <span className="weight-pill">{matrix.weight_gsm}</span>}
         </div>
-        <span className="weight-pill">{fabric.weight}</span>
-      </div>
-      <p className="fabric-stat" style={{ marginTop: '10px' }}><strong>Weave Texture:</strong> {fabric.texture}</p>
-
-      <div className="fabric-purchase-length-input-control-row">
-        <label>Required Cut Length:</label>
-        <div className="input-stepper-flex">
-          <input type="number" min="1" max="50" value={length} onChange={(e) => setLength(Math.max(1, parseInt(e.target.value) || 1))} />
-          <span>Meters</span>
+        {matrix.weave_texture && (
+          <p className="fabric-stat"><strong>Weave Texture:</strong> {matrix.weave_texture}</p>
+        )}
+        <div className="fabric-purchase-length-input-control-row">
+          <label>Required Cut Length:</label>
+          <div className="input-stepper-flex">
+            <input
+              type="number"
+              min={minLength}
+              max="50"
+              value={length}
+              onChange={(e) => setLength(Math.max(minLength, parseInt(e.target.value) || minLength))}
+            />
+            <span>Meters</span>
+          </div>
         </div>
+        <button className="select-fabric-indicator-btn active-buy-btn" onClick={() => onAddToBag(length)}>
+          Purchase Fabric Segment (${(length * pricePerMeter).toFixed(2)})
+        </button>
       </div>
-
-      <button className="select-fabric-indicator-btn active-buy-btn" onClick={() => onAddToBag(length)}>
-        Purchase Fabric Segment (${(length * 45).toFixed(2)})
-      </button>
     </div>
   );
 }
