@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   backend:
-    build: 
+    build:
       context: .
       dockerfile: backend.Dockerfile
     container_name: agent_boutique_backend
@@ -13,7 +13,7 @@ services:
     restart: unless-stopped
     # Mount the products.json so the container has the raw data if needed
     volumes:
-      - ./products.json:/app/products.json
+      - ./products.json:/app/products.json ####
 
   frontend:
     build:
@@ -22,11 +22,11 @@ services:
       args:
         # For local testing, 127.0.0.1 hits the user's host machine browser port
         # In a real cloud production environment, change this to your actual domain
-        - VITE_API_URL=http://127.0.0.1:8000
+        - VITE_API_URL=http://127.0.0.1:8000 #####
     container_name: agent_boutique_frontend
     ports:
       # Maps Nginx port 80 to localhost:5173 to match the original Vite port
-      - "5173:80"
+      - "5173:80" #####
     restart: unless-stopped
     depends_on:
-      - backend
+      - backend #####

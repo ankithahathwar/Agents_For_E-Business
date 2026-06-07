@@ -1,4 +1,4 @@
-# 🌟 Agents_For_E-Business: Marco Bespoke Core
+# 🌟 Agents_For_E-Business: Agents Boutique
 
 An elite, full-stack AI-driven e-commerce platform and tailored customization engine for luxury apparel. The system pairs a high-performance **React (Vite)** frontend storefront with a stateless **FastAPI (RESTful)** intelligent core backend. It uses semantic vector search over a 160-item catalog powered by **PostgreSQL (Neon with pgvector)** and hooks into **Groq (Llama 3.1 8B)** to drive an elite digital concierge assistant ("Marco") operating through a strict, anti-hallucination sales funnel.
 
@@ -252,7 +252,16 @@ Open your web browser and navigate to `http://localhost:5173` to interact with y
 
 ---
 
-## 🐳 Docker Deployment Summary
+## 🌐 Free Cloud Deployment Summary (Vercel & Render)
+
+If you want to host this application on the internet for free (e.g., for a portfolio or resume link), we highly recommend using Vercel and Render instead of Docker. The codebase is already perfectly optimized for this!
+
+* **Backend Engine Deployment (Render):** Host your FastAPI backend for free on **Render.com**. Connect your GitHub repository, create a "Web Service", and select your `backend.Dockerfile`. Make sure your `DATABASE_URL` and `GROQ_API_KEY` are added to the Render Environment Variables tab. Render will automatically give you a live API URL (e.g., `https://agent-boutique.onrender.com`).
+* **Frontend Application Deployment (Vercel):** Host your React frontend for free on **Vercel.com**. Connect your GitHub repository and import the `frontend-ui` directory. **Crucial Step:** In your Vercel project settings, add an Environment Variable named `VITE_API_URL` and set it to your live Render backend URL. Vercel will build your app and give you a permanent, live website link!
+
+---
+
+## 🐳 Docker Deployment Summary (Local / Self-Hosted)
 
 This project is fully containerized for easy, unified deployment using Docker Compose. The configuration uses a multi-stage Nginx build for the React frontend and a lightweight Python slim image for the FastAPI backend.
 
